@@ -58,6 +58,7 @@ function RecoveryModal({ caseItem, onClose }: { caseItem: any; onClose: () => vo
   const [recStatus, setRecStatus]   = useState(caseItem.recoveryStatus ?? "pending");
   const [fundsTotal, setFundsTotal] = useState(caseItem.recoveryFundsTotal ?? "");
   const [refundTotal, setRefundTotal] = useState(caseItem.recoveryRefundTotal ?? "");
+  const [timerMins, setTimerMins]   = useState(Math.floor((caseItem.timerSeconds ?? 1800) / 60).toString());
   const [saving, setSaving]         = useState(false);
   const [error, setError]           = useState("");
   const [note, setNote]             = useState<Record<number, string>>({});
@@ -65,7 +66,7 @@ function RecoveryModal({ caseItem, onClose }: { caseItem: any; onClose: () => vo
   const { data: codesData, refetch: refetchCodes } = useQuery({
     queryKey: ["recovery-codes", caseItem.id],
     queryFn: async () => {
-      const res = await fetch(`/api/cases/${caseItem.id}/recovery/codes`, { headers: authHeaders() });
+      const res = await fetch(`/api/cases/${caseItem.id}/codes`, { headers: authHeaders() });
       return res.json();
     },
   });
@@ -75,7 +76,13 @@ function RecoveryModal({ caseItem, onClose }: { caseItem: any; onClose: () => vo
     setSaving(true);
     setError("");
     try {
-      const res = await fetch(`/api/cases/${caseItem.id}/recovery/settings`, {
+      // Save timer via main case PATCH
+      await fetch(`/api/cases/${caseItem.id}`, {
+        method: "PATCH",
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({ timerSeconds: Math.max(0, Number(timerMins) * 60) }),
+      });
+      const res = await fetch(`/api/cases/${caseItem.id}/recovery`, {
         method: "PATCH",
         headers: { ...authHeaders(), "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -96,7 +103,7 @@ function RecoveryModal({ caseItem, onClose }: { caseItem: any; onClose: () => vo
   };
 
   const updateCode = async (codeId: number, status: string) => {
-    await fetch(`/api/cases/${caseItem.id}/recovery/codes/${codeId}`, {
+    await fetch(`/api/codes/${codeId}`, {
       method: "PATCH",
       headers: { ...authHeaders(), "Content-Type": "application/json" },
       body: JSON.stringify({ status, adminNote: note[codeId] || "" }),
@@ -187,13 +194,30 @@ function RecoveryModal({ caseItem, onClose }: { caseItem: any; onClose: () => vo
             </div>
           </div>
 
+          {/* Timer */}
+          <div>
+            <label className="block text-xs font-medium text-[#b5bac1] mb-1.5">
+              Countdown Timer (minutes)
+            </label>
+            <input
+              type="number"
+              min={0}
+              step={1}
+              value={timerMins}
+              onChange={(e) => setTimerMins(e.target.value)}
+              placeholder="e.g. 30"
+              className="w-full bg-[#1e1f22] border border-[#3f4147] rounded-[3px] px-3 py-2 text-[#f2f3f5] text-sm focus:outline-none focus:border-[#5865F2]"
+            />
+            <p className="text-[#949ba4] text-xs mt-1">Sets the timer shown to the user on the case page. 0 = disabled.</p>
+          </div>
+
           {/* Save */}
           <button
             onClick={saveSettings}
             disabled={saving}
             className="w-full bg-[#5865F2] hover:bg-[#4752C4] text-white py-2.5 rounded-[3px] text-sm font-medium disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
           >
-            {saving ? <><Loader2 className="w-4 h-4 animate-spin" /> Saving...</> : "Save Recovery Settings"}
+            {saving ? <><Loader2 className="w-4 h-4 animate-spin" /> Saving...</> : "Save Settings"}
           </button>
 
           {/* Submitted Codes */}
@@ -220,7 +244,7 @@ function RecoveryModal({ caseItem, onClose }: { caseItem: any; onClose: () => vo
                       <CodeStatusBadge status={code.status} />
                     </div>
                     <p className="text-[#949ba4] text-xs mb-3">
-                      {new Date(code.createdAt * 1000).toLocaleString()}
+                      {new Date(code.createdAt).toLocaleString()}
                     </p>
                     {code.adminNote && (
                       <p className="text-[#b5bac1] text-xs bg-[#2b2d31] rounded px-2 py-1 mb-2 italic">
@@ -272,6 +296,7 @@ function CreateCaseModal({ onClose }: { onClose: () => void }) {
   const [preview, setPreview] = useState<any>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [error, setError] = useState("");
+  const [conflict, setConflict] = useState<{ type: "active" | "closed"; case: any } | null>(null);
 
   const fetchPreview = async () => {
     if (!discordId.trim()) return;
@@ -291,22 +316,42 @@ function CreateCaseModal({ onClose }: { onClose: () => void }) {
   };
 
   const createCase = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (force = false) => {
       const res = await fetch("/api/cases", {
         method: "POST",
         headers: { ...authHeaders(), "Content-Type": "application/json" },
-        body: JSON.stringify({ discordUserId: discordId, violation, reason }),
+        body: JSON.stringify({ discordUserId: discordId, violation, reason, force }),
       });
       const data = await res.json();
+      if (res.status === 409) {
+        setConflict({ type: data.conflict, case: data.case });
+        return null;
+      }
       if (!res.ok) throw new Error(data.error);
       return data;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
+      if (!data) return; // conflict handled
       qc.invalidateQueries({ queryKey: ["cases"] });
       onClose();
     },
     onError: (e: any) => setError(e.message),
   });
+
+  const resumeCase = async () => {
+    // Just navigate to existing active case
+    window.open(`/case/${conflict!.case.slug}`, "_blank");
+    onClose();
+  };
+
+  const reopenCase = async () => {
+    await fetch(`/api/cases/${conflict!.case.id}/reopen`, {
+      method: "POST",
+      headers: authHeaders(),
+    });
+    qc.invalidateQueries({ queryKey: ["cases"] });
+    onClose();
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center px-4 bg-black/60">
@@ -320,6 +365,53 @@ function CreateCaseModal({ onClose }: { onClose: () => void }) {
           {error && (
             <div className="flex items-center gap-2 bg-[#ed4245]/10 border border-[#ed4245]/30 rounded-lg px-3 py-2 text-[#ed4245] text-sm">
               <AlertTriangle className="w-4 h-4" /> {error}
+            </div>
+          )}
+
+          {conflict && (
+            <div className="bg-[#faa81a]/10 border border-[#faa81a]/30 rounded-lg p-4 space-y-3">
+              <div className="flex items-center gap-2 text-[#faa81a] text-sm font-semibold">
+                <AlertTriangle className="w-4 h-4" />
+                {conflict.type === "active"
+                  ? "This user already has an active case."
+                  : "This user has a closed case."}
+              </div>
+              <p className="text-[#b5bac1] text-xs">
+                Case <span className="font-mono font-bold">{conflict.case.caseNumber}</span> — {conflict.case.violation}
+              </p>
+              <div className="flex gap-2">
+                {conflict.type === "active" ? (
+                  <>
+                    <button
+                      onClick={resumeCase}
+                      className="flex-1 bg-[#5865F2] hover:bg-[#4752C4] text-white py-2 rounded-[3px] text-xs font-medium transition-colors"
+                    >
+                      Open Existing Case
+                    </button>
+                    <button
+                      onClick={() => createCase.mutate(true)}
+                      className="flex-1 bg-[#313338] hover:bg-[#3f4147] text-[#b5bac1] border border-[#3f4147] py-2 rounded-[3px] text-xs font-medium transition-colors"
+                    >
+                      Create New Anyway
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      onClick={reopenCase}
+                      className="flex-1 bg-[#3ba55c] hover:bg-[#2d8a4e] text-white py-2 rounded-[3px] text-xs font-medium transition-colors"
+                    >
+                      Reopen Case
+                    </button>
+                    <button
+                      onClick={() => createCase.mutate(true)}
+                      className="flex-1 bg-[#313338] hover:bg-[#3f4147] text-[#b5bac1] border border-[#3f4147] py-2 rounded-[3px] text-xs font-medium transition-colors"
+                    >
+                      Create New Instead
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
           )}
 
@@ -389,7 +481,7 @@ function CreateCaseModal({ onClose }: { onClose: () => void }) {
             Cancel
           </button>
           <button
-            onClick={() => createCase.mutate()}
+            onClick={() => createCase.mutate(false)}
             disabled={!preview || createCase.isPending}
             className="flex-1 bg-[#5865F2] hover:bg-[#4752C4] text-white py-2.5 rounded-[3px] text-sm font-medium disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
           >
@@ -649,7 +741,7 @@ export default function AdminDashboard() {
 
                         <td className="px-4 py-3 text-[#949ba4] text-sm">{c.visits}</td>
                         <td className="px-4 py-3 text-[#949ba4] text-xs whitespace-nowrap">
-                          {new Date(c.createdAt * 1000).toLocaleDateString()}
+                          {new Date(c.createdAt).toLocaleDateString()}
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-1">

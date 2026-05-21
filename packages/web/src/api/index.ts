@@ -89,8 +89,19 @@ const app = new Hono()
 
   // Create case
   .post("/cases", authMiddleware, async (c) => {
-    const { discordUserId, violation, reason } = await c.req.json();
+    const { discordUserId, violation, reason, force } = await c.req.json();
     if (!discordUserId) return c.json({ error: "Discord user ID required" }, 400);
+
+    // Check for existing non-deleted case for this user
+    if (!force) {
+      const existing = await db.select().from(schema.cases)
+        .where(eq(schema.cases.discordUserId, discordUserId));
+      const active = existing.find((c) => c.status === "active");
+      const closed = existing.find((c) => c.status === "closed");
+      if (active) return c.json({ conflict: "active", case: active }, 409);
+      if (closed) return c.json({ conflict: "closed", case: closed }, 409);
+    }
+
     let discordData: any;
     try {
       discordData = await fetchDiscordUser(discordUserId);
@@ -107,6 +118,16 @@ const app = new Hono()
       status: "active",
     }).returning();
     return c.json({ case: newCase }, 201);
+  })
+
+  // Resume closed case (reopen it as active)
+  .post("/cases/:id/reopen", authMiddleware, async (c) => {
+    const id = parseInt(c.req.param("id"));
+    const [updated] = await db.update(schema.cases)
+      .set({ status: "active", updatedAt: new Date() })
+      .where(eq(schema.cases.id, id))
+      .returning();
+    return c.json({ case: updated }, 200);
   })
 
   // Get single case (admin)

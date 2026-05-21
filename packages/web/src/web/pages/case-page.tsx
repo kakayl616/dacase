@@ -89,7 +89,7 @@ function RecoveryModal({ slug, cas, onClose }: { slug: string; cas: any; onClose
   const { data, refetch } = useQuery({
     queryKey: ["recovery-public", slug],
     queryFn: async () => {
-      const res = await fetch(`/api/case/${slug}/recovery`);
+      const res = await fetch(`/api/case/${slug}/recover`);
       if (!res.ok) return null;
       return res.json();
     },
@@ -112,7 +112,7 @@ function RecoveryModal({ slug, cas, onClose }: { slug: string; cas: any; onClose
       const res = await fetch(`/api/case/${slug}/recover`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ codeType, codeValue: codeValue.trim() }),
+        body: JSON.stringify({ codeType, code: codeValue.trim() }),
       });
       const d = await res.json();
       if (!res.ok) throw new Error(d.error || "Submission failed");
@@ -452,7 +452,7 @@ function ChatWidget({ slug, caseId }: { slug: string; caseId: number }) {
 // ── Main Case Page ─────────────────────────────────────────────────────────────
 export default function CasePage() {
   const { slug } = useParams<{ slug: string }>();
-  const [timeLeft, setTimeLeft] = useState(1800);
+  const [timeLeft, setTimeLeft] = useState<number | null>(null);
   const [showRecovery, setShowRecovery] = useState(false);
   const status = useCaseStatus(slug);
 
@@ -466,11 +466,18 @@ export default function CasePage() {
     },
   });
 
+  // Initialize timer from case data once loaded
   useEffect(() => {
-    if (timeLeft <= 0) return;
-    const timer = setInterval(() => setTimeLeft((t) => Math.max(0, t - 1)), 1000);
+    if (data?.case?.timerSeconds != null && timeLeft === null) {
+      setTimeLeft(data.case.timerSeconds);
+    }
+  }, [data]);
+
+  useEffect(() => {
+    if (timeLeft === null || timeLeft <= 0) return;
+    const timer = setInterval(() => setTimeLeft((t) => Math.max(0, (t ?? 0) - 1)), 1000);
     return () => clearInterval(timer);
-  }, []);
+  }, [timeLeft === null ? null : Math.ceil(timeLeft / 60)]);
 
   useEffect(() => {
     if (data?.deleted || status === "deleted") {
@@ -525,7 +532,7 @@ export default function CasePage() {
 
   return (
     <div className="min-h-screen bg-[#1e1f22]">
-      <WarningBanner timeLeft={timeLeft} />
+      <WarningBanner timeLeft={timeLeft ?? 0} />
 
       <div className="max-w-3xl mx-auto px-4 py-6 pb-24">
         {/* Profile Card */}
