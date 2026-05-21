@@ -10,6 +10,7 @@
     "dev": "vite",
     "lint": "eslint .",
     "preview": "bun run build && vite preview",
+    "start": "bun run server.ts",
     "db:generate": "bun --env-file=../../.env drizzle-kit generate",
     "db:migrate": "bun --env-file=../../.env drizzle-kit migrate",
     "db:push": "bun --env-file=../../.env drizzle-kit push",
