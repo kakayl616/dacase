@@ -14,11 +14,14 @@ server.route("/api", app);
 server.use("*", serveStatic({ root: "./dist" }));
 
 // SPA fallback for client-side routing
-server.get("*", (c) => {
-  return c.html(Bun.file(path.resolve("./dist/index.html")).text());
+server.get("*", async (c) => {
+  const html = await Bun.file(path.resolve("./dist/index.html")).text();
+  return c.html(html);
 });
 
-export default {
+Bun.serve({
   port,
   fetch: server.fetch,
-};
+});
+
+console.log(`Server running on port ${port}`);
