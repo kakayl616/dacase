@@ -7,10 +7,8 @@ const port = Number(process.env.PORT) || 4173;
 
 const root = new Hono();
 
-// Prefix all API routes with /api
-const api = new Hono();
-api.route("/", apiApp);
-root.route("/api", api);
+// API — already handles /api/* via basePath("/api")
+root.route("/", apiApp);
 
 // Serve static files from dist
 root.use("*", serveStatic({ root: "./dist" }));

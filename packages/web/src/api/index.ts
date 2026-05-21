@@ -42,7 +42,7 @@ async function fetchDiscordUser(userId: string) {
 }
 
 const app = new Hono()
-  .basePath("api")
+  .basePath("/api")
   .use(cors({ origin: (origin) => origin ?? "*", credentials: true }))
 
   .get("/health", (c) => c.json({ status: "ok" }, 200))
