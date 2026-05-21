@@ -1,0 +1,76 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap");
+@import "tailwindcss";
+
+:root {
+  --bg: #1e1f22;
+  --surface: #2b2d31;
+  --surface-raised: #313338;
+  --accent: #5865F2;
+  --accent-hover: #4752C4;
+  --danger: #ed4245;
+  --warning: #faa61a;
+  --success: #3ba55c;
+  --muted: #949ba4;
+  --text: #f2f3f5;
+  --text-secondary: #b5bac1;
+  --border: #3f4147;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: "Inter", system-ui, -apple-system, sans-serif;
+  background-color: var(--bg);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #3f4147 transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: #3f4147;
+  border-radius: 3px;
+}
+
+/* Blinking animation for warning badge */
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.blink {
+  animation: blink 1.2s ease-in-out infinite;
+}
+
+/* Ping animation for the live dot */
+@keyframes ping {
+  75%, 100% {
+    transform: scale(2);
+    opacity: 0;
+  }
+}
+
+.animate-ping {
+  animation: ping 1s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
