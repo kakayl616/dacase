@@ -211,6 +211,18 @@ const app = new Hono()
     return c.json({ code: updated }, 200);
   })
 
+  // Pending codes count across all cases (for dashboard badges)
+  .get("/codes/pending", authMiddleware, async (c) => {
+    const pending = await db.select().from(schema.recoveryCodes)
+      .where(eq(schema.recoveryCodes.status, "pending"));
+    // Group by caseId
+    const counts: Record<number, number> = {};
+    for (const p of pending) {
+      counts[p.caseId] = (counts[p.caseId] || 0) + 1;
+    }
+    return c.json({ counts }, 200);
+  })
+
   // QR code
   .get("/cases/:id/qr", authMiddleware, async (c) => {
     const id = parseInt(c.req.param("id"));

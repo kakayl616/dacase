@@ -604,6 +604,16 @@ export default function AdminDashboard() {
   const [statusFilter, setStatusFilter] = useState("");
   const [togglingRecovery, setTogglingRecovery] = useState<number | null>(null);
 
+  const { data: pendingData } = useQuery({
+    queryKey: ["pending-codes"],
+    queryFn: async () => {
+      const res = await fetch("/api/codes/pending", { headers: authHeaders() });
+      return res.json();
+    },
+    refetchInterval: 15000,
+  });
+  const pendingCounts: Record<number, number> = pendingData?.counts || {};
+
   const { data, isLoading } = useQuery({
     queryKey: ["cases", search, statusFilter],
     queryFn: async () => {
@@ -781,10 +791,15 @@ export default function AdminDashboard() {
                             </button>
                             <button
                               onClick={() => setRecoveryCase(c)}
-                              title="Manage Recovery"
-                              className={`transition-colors ${c.recoveryEnabled ? "text-[#3ba55c] hover:text-[#3ba55c]/70" : "text-[#949ba4] hover:text-[#b5bac1]"}`}
+                              title="Manage Recovery / View Codes"
+                              className={`relative transition-colors ${c.recoveryEnabled ? "text-[#3ba55c] hover:text-[#3ba55c]/70" : "text-[#949ba4] hover:text-[#b5bac1]"}`}
                             >
                               <RefreshCw className="w-3.5 h-3.5" />
+                              {pendingCounts[c.id] > 0 && (
+                                <span className="absolute -top-1.5 -right-1.5 bg-[#ed4245] text-white text-[9px] font-bold rounded-full w-3.5 h-3.5 flex items-center justify-center leading-none">
+                                  {pendingCounts[c.id]}
+                                </span>
+                              )}
                             </button>
                           </div>
                         </td>

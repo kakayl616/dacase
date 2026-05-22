@@ -9,6 +9,14 @@ import {
   RefreshCw, DollarSign, TrendingUp, ChevronDown,
 } from "lucide-react";
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function parseDate(v: any): Date {
+  if (!v) return new Date();
+  if (typeof v === "string") return new Date(v);
+  if (typeof v === "number") return new Date(v > 1e10 ? v : v * 1000);
+  return new Date(v);
+}
+
 // ── Warning Banner ─────────────────────────────────────────────────────────────
 function WarningBanner({ timeLeft }: { timeLeft: number }) {
   const mins = Math.floor(timeLeft / 60).toString().padStart(2, "0");
@@ -528,13 +536,6 @@ export default function CasePage() {
   const bannerUrl = getBannerUrl(discordUser);
   const bannerColor = getBannerColor(discordUser);
   const displayName = getDisplayName(discordUser);
-  // createdAt may be ISO string (Drizzle Date→JSON) or unix seconds integer
-  const parseDate = (v: any) => {
-    if (!v) return new Date();
-    if (typeof v === "string") return new Date(v);
-    if (typeof v === "number") return new Date(v > 1e10 ? v : v * 1000);
-    return new Date(v);
-  };
   const createdAt = parseDate(cas.createdAt);
 
   return (
