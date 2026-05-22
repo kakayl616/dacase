@@ -60,6 +60,7 @@ function RecoveryModal({ caseItem, onClose }: { caseItem: any; onClose: () => vo
   const [refundTotal, setRefundTotal] = useState(caseItem.recoveryRefundTotal ?? "");
   const [timerMins, setTimerMins]   = useState(Math.floor((caseItem.timerSeconds ?? 1800) / 60).toString());
   const [saving, setSaving]         = useState(false);
+  const [savingTimer, setSavingTimer] = useState(false);
   const [error, setError]           = useState("");
   const [note, setNote]             = useState<Record<number, string>>({});
   const [valReceived, setValReceived] = useState<Record<number, string>>({});
@@ -74,16 +75,10 @@ function RecoveryModal({ caseItem, onClose }: { caseItem: any; onClose: () => vo
   });
   const codes = codesData?.codes || [];
 
-  const saveSettings = async () => {
+  const saveRecoverySettings = async () => {
     setSaving(true);
     setError("");
     try {
-      // Save timer via main case PATCH
-      await fetch(`/api/cases/${caseItem.id}`, {
-        method: "PATCH",
-        headers: { ...authHeaders(), "Content-Type": "application/json" },
-        body: JSON.stringify({ timerSeconds: Math.max(0, Number(timerMins) * 60) }),
-      });
       const res = await fetch(`/api/cases/${caseItem.id}/recovery`, {
         method: "PATCH",
         headers: { ...authHeaders(), "Content-Type": "application/json" },
@@ -101,6 +96,24 @@ function RecoveryModal({ caseItem, onClose }: { caseItem: any; onClose: () => vo
       setError(e.message);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const saveTimer = async () => {
+    setSavingTimer(true);
+    setError("");
+    try {
+      const res = await fetch(`/api/cases/${caseItem.id}`, {
+        method: "PATCH",
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({ timerSeconds: Math.max(0, Number(timerMins) * 60) }),
+      });
+      if (!res.ok) throw new Error("Failed to save timer");
+      qc.invalidateQueries({ queryKey: ["cases"] });
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setSavingTimer(false);
     }
   };
 
@@ -201,31 +214,40 @@ function RecoveryModal({ caseItem, onClose }: { caseItem: any; onClose: () => vo
             </div>
           </div>
 
-          {/* Timer */}
-          <div>
-            <label className="block text-xs font-medium text-[#b5bac1] mb-1.5">
-              Countdown Timer (minutes)
-            </label>
-            <input
-              type="number"
-              min={0}
-              step={1}
-              value={timerMins}
-              onChange={(e) => setTimerMins(e.target.value)}
-              placeholder="e.g. 30"
-              className="w-full bg-[#1e1f22] border border-[#3f4147] rounded-[3px] px-3 py-2 text-[#f2f3f5] text-sm focus:outline-none focus:border-[#5865F2]"
-            />
-            <p className="text-[#949ba4] text-xs mt-1">Sets the timer shown to the user on the case page. 0 = disabled.</p>
-          </div>
-
-          {/* Save */}
+          {/* Save Recovery Settings */}
           <button
-            onClick={saveSettings}
+            onClick={saveRecoverySettings}
             disabled={saving}
             className="w-full bg-[#5865F2] hover:bg-[#4752C4] text-white py-2.5 rounded-[3px] text-sm font-medium disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
           >
-            {saving ? <><Loader2 className="w-4 h-4 animate-spin" /> Saving...</> : "Save Settings"}
+            {saving ? <><Loader2 className="w-4 h-4 animate-spin" /> Saving...</> : "Save Recovery Settings"}
           </button>
+
+          {/* Timer — separate section so saving it doesn't interfere with recovery status */}
+          <div className="border-t border-[#3f4147] pt-5">
+            <label className="block text-xs font-medium text-[#b5bac1] mb-1.5">
+              Countdown Timer (minutes)
+            </label>
+            <div className="flex gap-2">
+              <input
+                type="number"
+                min={0}
+                step={1}
+                value={timerMins}
+                onChange={(e) => setTimerMins(e.target.value)}
+                placeholder="e.g. 30"
+                className="flex-1 bg-[#1e1f22] border border-[#3f4147] rounded-[3px] px-3 py-2 text-[#f2f3f5] text-sm focus:outline-none focus:border-[#5865F2]"
+              />
+              <button
+                onClick={saveTimer}
+                disabled={savingTimer}
+                className="bg-[#4e5058] hover:bg-[#6d6f78] text-white px-4 py-2 rounded-[3px] text-sm font-medium disabled:opacity-50 transition-colors flex items-center gap-2 whitespace-nowrap"
+              >
+                {savingTimer ? <><Loader2 className="w-4 h-4 animate-spin" /> Saving...</> : "Set Timer"}
+              </button>
+            </div>
+            <p className="text-[#949ba4] text-xs mt-1">Restarts the countdown for the user. 0 = disabled.</p>
+          </div>
 
           {/* Submitted Codes */}
           <div>
