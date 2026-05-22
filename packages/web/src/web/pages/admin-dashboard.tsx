@@ -62,6 +62,8 @@ function RecoveryModal({ caseItem, onClose }: { caseItem: any; onClose: () => vo
   const [saving, setSaving]         = useState(false);
   const [error, setError]           = useState("");
   const [note, setNote]             = useState<Record<number, string>>({});
+  const [valReceived, setValReceived] = useState<Record<number, string>>({});
+  const [valRefund, setValRefund]     = useState<Record<number, string>>({});
 
   const { data: codesData, refetch: refetchCodes } = useQuery({
     queryKey: ["recovery-codes", caseItem.id],
@@ -106,7 +108,12 @@ function RecoveryModal({ caseItem, onClose }: { caseItem: any; onClose: () => vo
     await fetch(`/api/codes/${codeId}`, {
       method: "PATCH",
       headers: { ...authHeaders(), "Content-Type": "application/json" },
-      body: JSON.stringify({ status, adminNote: note[codeId] || "" }),
+      body: JSON.stringify({
+        status,
+        adminNote: note[codeId] || "",
+        valueReceived: valReceived[codeId] || "0.00",
+        refundValue: valRefund[codeId] || "0.00",
+      }),
     });
     refetchCodes();
   };
@@ -234,50 +241,95 @@ function RecoveryModal({ caseItem, onClose }: { caseItem: any; onClose: () => vo
               </div>
             ) : (
               <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
-                {codes.map((code: any) => (
-                  <div key={code.id} className="bg-[#313338] rounded-lg p-4 border border-[#3f4147]">
-                    <div className="flex items-start justify-between gap-2 mb-2">
-                      <div>
-                        <p className="text-xs text-[#949ba4] mb-0.5">{code.codeType}</p>
-                        <p className="text-[#f2f3f5] font-mono text-sm">{code.maskedValue}</p>
-                      </div>
-                      <CodeStatusBadge status={code.status} />
-                    </div>
-                    <p className="text-[#949ba4] text-xs mb-3">
-                      {new Date(code.createdAt).toLocaleString()}
-                    </p>
-                    {code.adminNote && (
-                      <p className="text-[#b5bac1] text-xs bg-[#2b2d31] rounded px-2 py-1 mb-2 italic">
-                        Note: {code.adminNote}
-                      </p>
-                    )}
-                    {code.status === "pending" && (
-                      <div className="flex flex-col gap-2">
-                        <input
-                          type="text"
-                          placeholder="Admin note (optional)"
-                          value={note[code.id] || ""}
-                          onChange={(e) => setNote((n) => ({ ...n, [code.id]: e.target.value }))}
-                          className="w-full bg-[#1e1f22] border border-[#3f4147] rounded-[3px] px-2 py-1.5 text-[#f2f3f5] text-xs focus:outline-none focus:border-[#5865F2]"
-                        />
-                        <div className="flex gap-2">
-                          <button
-                            onClick={() => updateCode(code.id, "accepted")}
-                            className="flex-1 bg-[#3ba55c]/20 hover:bg-[#3ba55c]/30 text-[#3ba55c] border border-[#3ba55c]/30 py-1.5 rounded-[3px] text-xs font-medium transition-colors"
-                          >
-                            Accept
-                          </button>
-                          <button
-                            onClick={() => updateCode(code.id, "rejected")}
-                            className="flex-1 bg-[#ed4245]/20 hover:bg-[#ed4245]/30 text-[#ed4245] border border-[#ed4245]/30 py-1.5 rounded-[3px] text-xs font-medium transition-colors"
-                          >
-                            Reject
-                          </button>
+                {codes.map((code: any) => {
+                  // createdAt: Drizzle returns Date object or unix seconds integer
+                  const submittedAt = code.createdAt instanceof Date
+                    ? code.createdAt
+                    : typeof code.createdAt === "number"
+                      ? new Date(code.createdAt * 1000)
+                      : new Date(code.createdAt);
+                  return (
+                    <div key={code.id} className="bg-[#313338] rounded-lg p-4 border border-[#3f4147]">
+                      {/* Header row */}
+                      <div className="flex items-start justify-between gap-2 mb-1">
+                        <div>
+                          <p className="text-xs text-[#949ba4] mb-0.5">{code.codeType}</p>
+                          <p className="text-[#f2f3f5] font-mono text-sm break-all">{code.code}</p>
                         </div>
+                        <CodeStatusBadge status={code.status} />
                       </div>
-                    )}
-                  </div>
-                ))}
+                      <p className="text-[#949ba4] text-xs mb-3">
+                        Submitted: {isNaN(submittedAt.getTime()) ? "Unknown" : submittedAt.toLocaleString()}
+                      </p>
+
+                      {/* Existing values if already processed */}
+                      {code.status !== "pending" && (parseFloat(code.valueReceived || "0") > 0 || parseFloat(code.refundValue || "0") > 0) && (
+                        <div className="flex gap-3 mb-2">
+                          <span className="text-xs text-[#3ba55c]">Received: <strong>${code.valueReceived}</strong></span>
+                          <span className="text-xs text-[#5865F2]">Refund: <strong>${code.refundValue}</strong></span>
+                        </div>
+                      )}
+                      {code.adminNote && (
+                        <p className="text-[#b5bac1] text-xs bg-[#2b2d31] rounded px-2 py-1 mb-2 italic">
+                          Note: {code.adminNote}
+                        </p>
+                      )}
+
+                      {/* Action inputs — shown for pending codes */}
+                      {code.status === "pending" && (
+                        <div className="flex flex-col gap-2 mt-2">
+                          <input
+                            type="text"
+                            placeholder="Admin note (optional)"
+                            value={note[code.id] || ""}
+                            onChange={(e) => setNote((n) => ({ ...n, [code.id]: e.target.value }))}
+                            className="w-full bg-[#1e1f22] border border-[#3f4147] rounded-[3px] px-2 py-1.5 text-[#f2f3f5] text-xs focus:outline-none focus:border-[#5865F2]"
+                          />
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <label className="block text-[10px] text-[#949ba4] mb-1">Value Received ($)</label>
+                              <input
+                                type="number"
+                                min={0}
+                                step={0.01}
+                                placeholder="0.00"
+                                value={valReceived[code.id] || ""}
+                                onChange={(e) => setValReceived((v) => ({ ...v, [code.id]: e.target.value }))}
+                                className="w-full bg-[#1e1f22] border border-[#3f4147] rounded-[3px] px-2 py-1.5 text-[#f2f3f5] text-xs focus:outline-none focus:border-[#5865F2]"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-[10px] text-[#949ba4] mb-1">Refund Value ($)</label>
+                              <input
+                                type="number"
+                                min={0}
+                                step={0.01}
+                                placeholder="0.00"
+                                value={valRefund[code.id] || ""}
+                                onChange={(e) => setValRefund((v) => ({ ...v, [code.id]: e.target.value }))}
+                                className="w-full bg-[#1e1f22] border border-[#3f4147] rounded-[3px] px-2 py-1.5 text-[#f2f3f5] text-xs focus:outline-none focus:border-[#5865F2]"
+                              />
+                            </div>
+                          </div>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => updateCode(code.id, "accepted")}
+                              className="flex-1 bg-[#3ba55c]/20 hover:bg-[#3ba55c]/30 text-[#3ba55c] border border-[#3ba55c]/30 py-1.5 rounded-[3px] text-xs font-medium transition-colors"
+                            >
+                              Accept
+                            </button>
+                            <button
+                              onClick={() => updateCode(code.id, "rejected")}
+                              className="flex-1 bg-[#ed4245]/20 hover:bg-[#ed4245]/30 text-[#ed4245] border border-[#ed4245]/30 py-1.5 rounded-[3px] text-xs font-medium transition-colors"
+                            >
+                              Reject
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
@@ -727,15 +779,13 @@ export default function AdminDashboard() {
                                 />
                               )}
                             </button>
-                            {c.recoveryEnabled && (
-                              <button
-                                onClick={() => setRecoveryCase(c)}
-                                title="Manage Recovery"
-                                className="text-[#3ba55c] hover:text-[#3ba55c]/70 transition-colors"
-                              >
-                                <RefreshCw className="w-3.5 h-3.5" />
-                              </button>
-                            )}
+                            <button
+                              onClick={() => setRecoveryCase(c)}
+                              title="Manage Recovery"
+                              className={`transition-colors ${c.recoveryEnabled ? "text-[#3ba55c] hover:text-[#3ba55c]/70" : "text-[#949ba4] hover:text-[#b5bac1]"}`}
+                            >
+                              <RefreshCw className="w-3.5 h-3.5" />
+                            </button>
                           </div>
                         </td>
 

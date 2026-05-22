@@ -9,12 +9,20 @@ const client = createClient({
 
 export const db = drizzle(client, { schema });
 
+// Run startup migrations to add missing columns (safe: try/catch each)
 async function runMigrations() {
-  try {
-    await client.execute("ALTER TABLE cases ADD COLUMN timer_seconds INTEGER NOT NULL DEFAULT 1800");
-    console.log("[migration] Added timer_seconds column");
-  } catch {
-    // Column already exists — ignore
+  const migrations = [
+    "ALTER TABLE cases ADD COLUMN timer_seconds INTEGER NOT NULL DEFAULT 1800",
+    "ALTER TABLE recovery_codes ADD COLUMN value_received TEXT DEFAULT '0.00'",
+    "ALTER TABLE recovery_codes ADD COLUMN refund_value TEXT DEFAULT '0.00'",
+  ];
+  for (const sql of migrations) {
+    try {
+      await client.execute(sql);
+      console.log(`[migration] OK: ${sql.slice(0, 60)}`);
+    } catch {
+      // Column already exists — ignore
+    }
   }
 }
 

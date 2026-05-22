@@ -258,7 +258,7 @@ function RecoveryModal({ slug, cas, onClose }: { slug: string; cas: any; onClose
                   <div key={code.id ?? i} className="bg-[#313338] rounded-lg px-3 py-2.5 flex items-center justify-between gap-3">
                     <div className="min-w-0">
                       <p className="text-[#949ba4] text-xs mb-0.5">{code.codeType}</p>
-                      <p className="text-[#f2f3f5] font-mono text-sm truncate">{code.maskedValue}</p>
+                      <p className="text-[#f2f3f5] font-mono text-sm truncate">{code.code}</p>
                       {code.adminNote && (
                         <p className="text-[#949ba4] text-xs mt-1 italic">{code.adminNote}</p>
                       )}
@@ -266,7 +266,7 @@ function RecoveryModal({ slug, cas, onClose }: { slug: string; cas: any; onClose
                     <div className="flex flex-col items-end gap-1 flex-shrink-0">
                       <CodeStatusBadge status={code.status} />
                       <p className="text-[#949ba4] text-xs">
-                        {new Date(code.createdAt * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                        {parseDate(code.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                       </p>
                     </div>
                   </div>
@@ -399,7 +399,7 @@ function ChatWidget({ slug, caseId }: { slug: string; caseId: number }) {
                       )
                     )}
                     <p className={`text-xs mt-1 ${isAdmin ? "text-[#949ba4]" : "text-white/60"}`}>
-                      {new Date(msg.createdAt * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                      {parseDate(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                     </p>
                   </div>
                 </div>
@@ -528,7 +528,14 @@ export default function CasePage() {
   const bannerUrl = getBannerUrl(discordUser);
   const bannerColor = getBannerColor(discordUser);
   const displayName = getDisplayName(discordUser);
-  const createdAt = new Date(cas.createdAt * 1000);
+  // createdAt may be ISO string (Drizzle Date→JSON) or unix seconds integer
+  const parseDate = (v: any) => {
+    if (!v) return new Date();
+    if (typeof v === "string") return new Date(v);
+    if (typeof v === "number") return new Date(v > 1e10 ? v : v * 1000);
+    return new Date(v);
+  };
+  const createdAt = parseDate(cas.createdAt);
 
   return (
     <div className="min-h-screen bg-[#1e1f22]">

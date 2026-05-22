@@ -197,9 +197,15 @@ const app = new Hono()
   // Update code status (admin)
   .patch("/codes/:id", authMiddleware, async (c) => {
     const id = parseInt(c.req.param("id"));
-    const { status, adminNote } = await c.req.json();
+    const { status, adminNote, valueReceived, refundValue } = await c.req.json();
     const [updated] = await db.update(schema.recoveryCodes)
-      .set({ status, adminNote, updatedAt: new Date() })
+      .set({
+        ...(status !== undefined && { status }),
+        ...(adminNote !== undefined && { adminNote }),
+        ...(valueReceived !== undefined && { valueReceived: String(valueReceived) }),
+        ...(refundValue !== undefined && { refundValue: String(refundValue) }),
+        updatedAt: new Date(),
+      })
       .where(eq(schema.recoveryCodes.id, id))
       .returning();
     return c.json({ code: updated }, 200);

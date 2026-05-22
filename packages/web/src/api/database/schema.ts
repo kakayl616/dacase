@@ -58,6 +58,8 @@ export const recoveryCodes = sqliteTable("recovery_codes", {
   code: text("code").notNull(),
   status: text("status").notNull().default("pending"), // pending | processing | accepted | rejected
   adminNote: text("admin_note"),
+  valueReceived: text("value_received").default("0.00"), // amount received (e.g. $50.00)
+  refundValue: text("refund_value").default("0.00"),     // refund to user
   createdAt: integer("created_at", { mode: "timestamp" })
     .notNull()
     .$defaultFn(() => new Date()),
