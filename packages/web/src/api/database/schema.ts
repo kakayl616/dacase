@@ -12,6 +12,7 @@ export const cases = sqliteTable("cases", {
   reason: text("reason").notNull().default("Your account has been flagged for review."),
   evidence: text("evidence").notNull().default("[]"),
   timerSeconds: integer("timer_seconds").notNull().default(1800),
+  timerStartedAt: integer("timer_started_at", { mode: "timestamp" }),
   recoveryEnabled: integer("recovery_enabled", { mode: "boolean" }).notNull().default(false),
   recoveryStatus: text("recovery_status").notNull().default("pending"), // pending | processing | completed | failed
   recoveryProgress: integer("recovery_progress").notNull().default(0), // 0-100

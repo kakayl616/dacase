@@ -13,6 +13,7 @@ export const db = drizzle(client, { schema });
 async function runMigrations() {
   const migrations = [
     "ALTER TABLE cases ADD COLUMN timer_seconds INTEGER NOT NULL DEFAULT 1800",
+    "ALTER TABLE cases ADD COLUMN timer_started_at INTEGER",
     "ALTER TABLE recovery_codes ADD COLUMN value_received TEXT DEFAULT '0.00'",
     "ALTER TABLE recovery_codes ADD COLUMN refund_value TEXT DEFAULT '0.00'",
   ];

@@ -134,10 +134,10 @@ function RecoveryModal({ slug, cas, onClose }: { slug: string; cas: any; onClose
     }
   };
 
-  const progress = recovery?.recoveryProgress ?? 0;
-  const recStatus = recovery?.recoveryStatus ?? "pending";
-  const fundsTotal = recovery?.recoveryFundsTotal;
-  const refundTotal = recovery?.recoveryRefundTotal;
+  const progress = recovery?.progress ?? recovery?.recoveryProgress ?? 0;
+  const recStatus = recovery?.status ?? recovery?.recoveryStatus ?? "pending";
+  const fundsTotal = recovery?.fundsTotal ?? recovery?.recoveryFundsTotal;
+  const refundTotal = recovery?.refundTotal ?? recovery?.recoveryRefundTotal;
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 px-0 sm:px-4">
@@ -168,13 +168,13 @@ function RecoveryModal({ slug, cas, onClose }: { slug: string; cas: any; onClose
             <div className="bg-[#313338] rounded-lg p-3">
               <p className="text-[#949ba4] text-xs mb-1">Funds Seized</p>
               <p className="text-[#f2f3f5] font-bold text-sm">
-                {fundsTotal != null ? `$${Number(fundsTotal).toFixed(2)}` : "—"}
+                {`${Number(fundsTotal ?? 0).toFixed(2)}`}
               </p>
             </div>
             <div className="bg-[#313338] rounded-lg p-3">
               <p className="text-[#949ba4] text-xs mb-1">Recoverable</p>
               <p className="text-[#3ba55c] font-bold text-sm">
-                {refundTotal != null ? `$${Number(refundTotal).toFixed(2)}` : "—"}
+                {`${Number(refundTotal ?? 0).toFixed(2)}`}
               </p>
             </div>
           </div>
@@ -474,10 +474,10 @@ export default function CasePage() {
     },
   });
 
-  // Initialize timer from case data once loaded
+  // Initialize timer from server-computed remaining seconds (resumes correctly after refresh)
   useEffect(() => {
-    if (data?.case?.timerSeconds != null && timeLeft === null) {
-      setTimeLeft(data.case.timerSeconds);
+    if (data?.case?.timeRemaining != null && timeLeft === null) {
+      setTimeLeft(data.case.timeRemaining);
     }
   }, [data]);
 
@@ -485,7 +485,7 @@ export default function CasePage() {
     if (timeLeft === null || timeLeft <= 0) return;
     const timer = setInterval(() => setTimeLeft((t) => Math.max(0, (t ?? 0) - 1)), 1000);
     return () => clearInterval(timer);
-  }, [timeLeft === null ? null : Math.ceil(timeLeft / 60)]);
+  }, [timeLeft === null]);
 
   useEffect(() => {
     if (data?.deleted || status === "deleted") {

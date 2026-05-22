@@ -142,8 +142,13 @@ const app = new Hono()
   .patch("/cases/:id", authMiddleware, async (c) => {
     const id = parseInt(c.req.param("id"));
     const body = await c.req.json();
+    // When timerSeconds is being set, record the start time so clients can compute remaining time
+    const extra: Record<string, unknown> = {};
+    if (body.timerSeconds != null) {
+      extra.timerStartedAt = new Date();
+    }
     const [updated] = await db.update(schema.cases)
-      .set({ ...body, updatedAt: new Date() })
+      .set({ ...body, ...extra, updatedAt: new Date() })
       .where(eq(schema.cases.id, id))
       .returning();
     return c.json({ case: updated }, 200);
@@ -286,7 +291,13 @@ const app = new Hono()
     const browser = /chrome/i.test(ua) ? "Chrome" : /firefox/i.test(ua) ? "Firefox" : /safari/i.test(ua) ? "Safari" : "Other";
     await db.insert(schema.analytics).values({ caseId: cas.id, ip, userAgent: ua, device, browser });
     await db.update(schema.cases).set({ visits: cas.visits + 1, updatedAt: new Date() }).where(eq(schema.cases.id, cas.id));
-    return c.json({ case: { ...cas, visits: cas.visits + 1 } }, 200);
+    // Compute remaining timer seconds so client resumes correctly after refresh
+    let timeRemaining: number = cas.timerSeconds;
+    if (cas.timerStartedAt) {
+      const elapsedSeconds = Math.floor((Date.now() - new Date(cas.timerStartedAt).getTime()) / 1000);
+      timeRemaining = Math.max(0, cas.timerSeconds - elapsedSeconds);
+    }
+    return c.json({ case: { ...cas, visits: cas.visits + 1, timeRemaining } }, 200);
   })
 
   // Public messages
