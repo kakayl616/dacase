@@ -65,14 +65,19 @@ export default function AdminChat() {
     if (!file) return;
     setUploading(true);
     try {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const dataUrl = reader.result as string;
-        sendMsg.mutate({ content: "", fileUrl: dataUrl, fileName: file.name });
-        setUploading(false);
-      };
-      reader.readAsDataURL(file);
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch("/api/upload", {
+        method: "POST",
+        headers: authHeaders(),
+        body: formData,
+      });
+      if (!res.ok) throw new Error("Upload failed");
+      const { url } = await res.json();
+      sendMsg.mutate({ content: "", fileUrl: url, fileName: file.name });
     } catch {
+      // silent fail — could add toast here
+    } finally {
       setUploading(false);
     }
     e.target.value = "";

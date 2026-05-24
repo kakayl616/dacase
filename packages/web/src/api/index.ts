@@ -6,8 +6,19 @@ import { eq, desc } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import QRCode from "qrcode";
+import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 
 const JWT_SECRET = process.env.JWT_SECRET || "discord-case-secret-2025";
+
+// ── R2 / S3 client ────────────────────────────────────────────────────────────
+const r2 = new S3Client({
+  region: "auto",
+  endpoint: `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+  credentials: {
+    accessKeyId: process.env.R2_ACCESS_KEY_ID || "",
+    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY || "",
+  },
+});
 const ADMIN_USERNAME = process.env.ADMIN_USERNAME || "admin";
 const ADMIN_PASSWORD_HASH = process.env.ADMIN_PASSWORD_HASH || bcrypt.hashSync(process.env.ADMIN_PASSWORD || "admin123", 10);
 const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN || "";
@@ -58,6 +69,36 @@ const app = new Hono()
   })
 
   .get("/auth/me", authMiddleware, (c) => c.json({ admin: c.get("admin") }, 200))
+
+  // ── File upload → R2 ──────────────────────────────────────────────────────
+  .post("/upload", async (c) => {
+    try {
+      const formData = await c.req.formData();
+      const file = formData.get("file") as File | null;
+      if (!file) return c.json({ error: "No file" }, 400);
+
+      // Limit to 10MB
+      if (file.size > 10 * 1024 * 1024) return c.json({ error: "File too large (max 10MB)" }, 400);
+
+      const ext = file.name.split(".").pop()?.toLowerCase() || "bin";
+      const key = `uploads/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+      const buffer = await file.arrayBuffer();
+
+      await r2.send(new PutObjectCommand({
+        Bucket: process.env.R2_BUCKET,
+        Key: key,
+        Body: Buffer.from(buffer),
+        ContentType: file.type || "application/octet-stream",
+        ContentDisposition: "inline",
+      }));
+
+      const publicUrl = `${process.env.R2_PUBLIC_URL}/${key}`;
+      return c.json({ url: publicUrl, name: file.name }, 200);
+    } catch (e: any) {
+      console.error("[upload]", e);
+      return c.json({ error: "Upload failed" }, 500);
+    }
+  })
 
   // Discord lookup
   .get("/discord/user/:id", authMiddleware, async (c) => {

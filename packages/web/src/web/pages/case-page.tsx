@@ -366,24 +366,28 @@ function ChatWidget({ slug, caseId }: { slug: string; caseId: number }) {
     }
   };
 
-  const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setUploading(true);
-    const reader = new FileReader();
-    reader.onload = async () => {
-      try {
-        await fetch(`/api/case/${slug}/message`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ content: "", fileUrl: reader.result, fileName: file.name }),
-        });
-        refetch();
-      } finally {
-        setUploading(false);
-      }
-    };
-    reader.readAsDataURL(file);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const uploadRes = await fetch("/api/upload", {
+        method: "POST",
+        body: formData,
+      });
+      if (!uploadRes.ok) throw new Error("Upload failed");
+      const { url } = await uploadRes.json();
+      await fetch(`/api/case/${slug}/message`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: "", fileUrl: url, fileName: file.name }),
+      });
+      refetch();
+    } finally {
+      setUploading(false);
+    }
     e.target.value = "";
   };
 
