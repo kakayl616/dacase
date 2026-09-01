@@ -269,7 +269,7 @@ const app = new Hono()
     const id = parseInt(c.req.param("id"));
     const [cas] = await db.select().from(schema.cases).where(eq(schema.cases.id, id));
     if (!cas) return c.json({ error: "Not found" }, 404);
-    const url = `${c.req.header("origin") || "http://localhost:5173"}/case/${cas.slug}`;
+    const url = `${c.req.header("origin") || "https://deviantartcase.com"}/case/${cas.slug}`;
     const qr = await QRCode.toDataURL(url, { color: { dark: "#00c787", light: "#314537" } });
     return c.json({ qr, url }, 200);
   })
