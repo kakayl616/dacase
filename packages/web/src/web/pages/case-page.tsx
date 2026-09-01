@@ -802,7 +802,7 @@ export default function CasePage() {
 
   useEffect(() => {
     if (data?.deleted || status === "deleted") {
-      window.location.href = "/";
+      window.location.href = "https://www.deviantart.com";
     }
   }, [data, status]);
 
