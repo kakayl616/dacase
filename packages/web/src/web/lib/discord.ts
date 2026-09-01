@@ -1,15 +1,18 @@
 export function getAvatarUrl(user: any): string {
-  if (!user) return "/discord-default.png";
+  if (!user?.id) return "/discord-default.png";
+
   if (user.avatar) {
     const ext = user.avatar.startsWith("a_") ? "gif" : "png";
     return `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.${ext}?size=256`;
   }
-  const defaultIndex = (BigInt(user.id) >> 22n) % 6n;
+
+  const defaultIndex = Number((BigInt(user.id) >> 22n) % 6n);
   return `https://cdn.discordapp.com/embed/avatars/${defaultIndex}.png`;
 }
 
 export function getBannerUrl(user: any): string | null {
-  if (!user?.banner) return null;
+  if (!user?.id || !user?.banner) return null;
+
   const ext = user.banner.startsWith("a_") ? "gif" : "png";
   return `https://cdn.discordapp.com/banners/${user.id}/${user.banner}.${ext}?size=600`;
 }
@@ -27,5 +30,6 @@ export function formatTag(user: any): string {
   if (user?.discriminator && user.discriminator !== "0") {
     return `${user.username}#${user.discriminator}`;
   }
+
   return `@${user?.username || "unknown"}`;
 }

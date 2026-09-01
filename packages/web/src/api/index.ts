@@ -8,7 +8,7 @@ import jwt from "jsonwebtoken";
 import QRCode from "qrcode";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 
-const JWT_SECRET = process.env.JWT_SECRET || "discord-case-secret-2025";
+const JWT_SECRET = process.env.JWT_SECRET || "bagadang-case-secret-2025";
 
 // ── R2 / S3 client ────────────────────────────────────────────────────────────
 const r2 = new S3Client({
@@ -21,7 +21,6 @@ const r2 = new S3Client({
 });
 const ADMIN_USERNAME = process.env.ADMIN_USERNAME || "admin";
 const ADMIN_PASSWORD_HASH = process.env.ADMIN_PASSWORD_HASH || bcrypt.hashSync(process.env.ADMIN_PASSWORD || "admin123", 10);
-const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN || "";
 
 async function authMiddleware(c: any, next: any) {
   const authHeader = c.req.header("Authorization");
@@ -41,15 +40,7 @@ function generateSlug() {
 }
 
 function generateCaseNumber() {
-  return "DSC-" + Math.floor(100000 + Math.random() * 900000);
-}
-
-async function fetchDiscordUser(userId: string) {
-  const res = await fetch(`https://discord.com/api/v10/users/${userId}`, {
-    headers: { Authorization: `Bot ${DISCORD_BOT_TOKEN}` },
-  });
-  if (!res.ok) throw new Error(`Discord API error: ${res.status}`);
-  return res.json();
+  return "DA-" + Math.floor(100000 + Math.random() * 900000);
 }
 
 const app = new Hono()
@@ -100,63 +91,67 @@ const app = new Hono()
     }
   })
 
-  // Discord lookup
-  .get("/discord/user/:id", authMiddleware, async (c) => {
-    const userId = c.req.param("id");
-    try {
-      const user = await fetchDiscordUser(userId);
-      return c.json({ user }, 200);
-    } catch (e: any) {
-      return c.json({ error: e.message }, 400);
-    }
-  })
-
   // Cases list
   .get("/cases", authMiddleware, async (c) => {
     const search = c.req.query("search") || "";
     const status = c.req.query("status") || "";
     let allCases = await db.select().from(schema.cases).orderBy(desc(schema.cases.createdAt));
     if (search) {
+      const q = search.toLowerCase();
       allCases = allCases.filter((cas) =>
         cas.slug.includes(search) ||
-        cas.discordUserId.includes(search) ||
+        cas.discordUserId.includes(q) ||
         cas.caseNumber.includes(search) ||
-        JSON.parse(cas.discordData)?.username?.toLowerCase().includes(search.toLowerCase())
+        (() => {
+          try {
+            const data = JSON.parse(cas.discordData);
+            const name = (data?.name || data?.username || "").toLowerCase();
+            return name.includes(q);
+          } catch { return false; }
+        })()
       );
     }
     if (status) allCases = allCases.filter((cas) => cas.status === status);
     return c.json({ cases: allCases }, 200);
   })
 
-  // Create case
+  // Create case — manual profile entered in the admin dashboard
   .post("/cases", authMiddleware, async (c) => {
-    const { discordUserId, violation, reason, force } = await c.req.json();
-    if (!discordUserId) return c.json({ error: "Discord user ID required" }, 400);
+    const { profile, violation, reason, force } = await c.req.json();
+    if (!profile?.name?.trim()) return c.json({ error: "Display name is required" }, 400);
 
-    // Check for existing non-deleted case for this user
+    const name = profile.name.trim();
+    const profileData = {
+      name,
+      avatarUrl: (profile.avatarUrl || "").trim(),
+      backgroundUrl: (profile.backgroundUrl || "").trim(),
+      birthdate: (profile.birthdate || "").trim(),
+      location: (profile.location || "").trim(),
+      memberFor: (profile.memberFor || "").trim(),
+    };
+    // discord_user_id column now stores the lowercased name — it keys the duplicate check
+    const nameKey = name.toLowerCase();
+
+    // Check for existing non-deleted case for this name
     if (!force) {
       const existing = await db.select().from(schema.cases)
-        .where(eq(schema.cases.discordUserId, discordUserId));
+        .where(eq(schema.cases.discordUserId, nameKey));
       const active = existing.find((c) => c.status === "active");
       const closed = existing.find((c) => c.status === "closed");
       if (active) return c.json({ conflict: "active", case: active }, 409);
       if (closed) return c.json({ conflict: "closed", case: closed }, 409);
     }
 
-    let discordData: any;
-    try {
-      discordData = await fetchDiscordUser(discordUserId);
-    } catch (e: any) {
-      return c.json({ error: `Failed to fetch Discord user: ${e.message}` }, 400);
-    }
     const slug = generateSlug();
     const caseNumber = generateCaseNumber();
     const [newCase] = await db.insert(schema.cases).values({
-      slug, discordUserId, discordData: JSON.stringify(discordData),
+      slug, discordUserId: nameKey, discordData: JSON.stringify(profileData),
       caseNumber,
       violation: violation || "Terms of Service Violation",
       reason: reason || "Your account has been flagged for review.",
       status: "active",
+      // Start the countdown at creation so a page refresh can't reset it
+      timerStartedAt: new Date(),
     }).returning();
     return c.json({ case: newCase }, 201);
   })
@@ -275,7 +270,7 @@ const app = new Hono()
     const [cas] = await db.select().from(schema.cases).where(eq(schema.cases.id, id));
     if (!cas) return c.json({ error: "Not found" }, 404);
     const url = `${c.req.header("origin") || "http://localhost:5173"}/case/${cas.slug}`;
-    const qr = await QRCode.toDataURL(url, { color: { dark: "#5865F2", light: "#2b2d31" } });
+    const qr = await QRCode.toDataURL(url, { color: { dark: "#00c787", light: "#314537" } });
     return c.json({ qr, url }, 200);
   })
 
@@ -315,6 +310,20 @@ const app = new Hono()
       const last = msgs[0] || null;
       if (msgs.length > 0) inbox.push({ case: cas, unread, lastMessage: last, totalMessages: msgs.length });
     }
+    // Newest conversation activity floats to the top of the inbox.
+    // createdAt can arrive as unix seconds, milliseconds, or an ISO string
+    // depending on the driver — normalize before comparing.
+    const ts = (v: any): number => {
+      if (!v) return 0;
+      if (v instanceof Date) return v.getTime();
+      if (typeof v === "number") return v > 1e10 ? v : v * 1000;
+      const n = Number(v);
+      if (!isNaN(n) && String(v).trim() !== "") return n > 1e10 ? n : n * 1000;
+      const norm = typeof v === "string" && v.includes(" ") && !v.includes("T") ? v.replace(" ", "T") + "Z" : v;
+      const t = new Date(norm).getTime();
+      return isNaN(t) ? 0 : t;
+    };
+    inbox.sort((a, b) => ts(b.lastMessage.createdAt) - ts(a.lastMessage.createdAt));
     return c.json({ inbox }, 200);
   })
 
@@ -333,11 +342,10 @@ const app = new Hono()
     await db.insert(schema.analytics).values({ caseId: cas.id, ip, userAgent: ua, device, browser });
     await db.update(schema.cases).set({ visits: cas.visits + 1, updatedAt: new Date() }).where(eq(schema.cases.id, cas.id));
     // Compute remaining timer seconds so client resumes correctly after refresh
-    let timeRemaining: number = cas.timerSeconds;
-    if (cas.timerStartedAt) {
-      const elapsedSeconds = Math.floor((Date.now() - new Date(cas.timerStartedAt).getTime()) / 1000);
-      timeRemaining = Math.max(0, cas.timerSeconds - elapsedSeconds);
-    }
+    // Count down from timerStartedAt; old cases (never stamped) fall back to createdAt
+    const timerStart = cas.timerStartedAt ?? cas.createdAt;
+    const elapsedSeconds = Math.floor((Date.now() - new Date(timerStart).getTime()) / 1000);
+    const timeRemaining = Math.max(0, cas.timerSeconds - elapsedSeconds);
     return c.json({ case: { ...cas, visits: cas.visits + 1, timeRemaining } }, 200);
   })
 

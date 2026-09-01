@@ -2,41 +2,8 @@ import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import AdminLayout from "../components/AdminLayout";
 import { authHeaders } from "../lib/api";
+import { getAvatarUrl, getDisplayName } from "../lib/discord";
 import { MessageSquare, Loader2, Circle } from "lucide-react";
-
-// ── Profile helpers ──────────────────────────────────────────────────────────
-// Cases store a manually-entered profile: { name, avatarUrl, ... }.
-function getDisplayName(user: any): string {
-  return user.name || "Unknown User";
-}
-
-// Message timestamps come from the DB as unix seconds, ISO strings, or
-// millisecond numbers depending on the driver — normalize them all.
-function parseDate(v: any): Date {
-  if (!v) return new Date(NaN);
-  if (v instanceof Date) return v;
-  if (typeof v === "string") {
-    const n = Number(v);
-    if (!isNaN(n) && v.trim() !== "") return new Date(n > 1e10 ? n : n * 1000);
-    return new Date(v.includes(" ") && !v.includes("T") ? v.replace(" ", "T") + "Z" : v);
-  }
-  if (typeof v === "number") return new Date(v > 1e10 ? v : v * 1000);
-  return new Date(v);
-}
-
-// Renders in the VIEWER's own timezone automatically (toLocaleString uses the
-// browser's locale + timezone — no extra code needed for other countries).
-function formatMessageTime(v: any): string {
-  const d = parseDate(v);
-  if (isNaN(d.getTime())) return "";
-  const now = new Date();
-  const sameDay = d.toDateString() === now.toDateString();
-  const sameYear = d.getFullYear() === now.getFullYear();
-  const time = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  if (sameDay) return time;
-  if (sameYear) return d.toLocaleDateString([], { month: "short", day: "numeric" }) + ", " + time;
-  return d.toLocaleDateString([], { year: "numeric", month: "short", day: "numeric" });
-}
 
 export default function AdminInbox() {
   const [, navigate] = useLocation();
@@ -63,7 +30,7 @@ export default function AdminInbox() {
         <div className="bg-[#2b2d31] border border-[#3f4147] rounded-xl overflow-hidden">
           {isLoading ? (
             <div className="flex items-center justify-center py-16">
-              <Loader2 className="w-6 h-6 text-[#00c787] animate-spin" />
+              <Loader2 className="w-6 h-6 text-[#5865F2] animate-spin" />
             </div>
           ) : inbox.length === 0 ? (
             <div className="text-center py-16 text-[#949ba4]">
@@ -83,19 +50,7 @@ export default function AdminInbox() {
                     className="w-full flex items-center gap-4 px-5 py-4 hover:bg-[#313338] transition-colors text-left"
                   >
                     <div className="relative flex-shrink-0">
-                      <div className="w-11 h-11 rounded-full bg-[#3f4147] overflow-hidden flex items-center justify-center">
-                        <span className="text-lg font-bold text-[#f2f3f5]">
-                          {getDisplayName(user).charAt(0).toUpperCase()}
-                        </span>
-                        {user.avatarUrl && (
-                          <img
-                            src={user.avatarUrl}
-                            alt=""
-                            onError={(e) => { e.currentTarget.style.display = "none"; }}
-                            className="absolute inset-0 w-full h-full object-cover"
-                          />
-                        )}
-                      </div>
+                      <img src={getAvatarUrl(user)} alt="" className="w-11 h-11 rounded-full" />
                       {item.unread > 0 && (
                         <span className="absolute -top-1 -right-1 w-5 h-5 bg-[#ed4245] text-white text-xs font-bold rounded-full flex items-center justify-center">
                           {item.unread > 9 ? "9+" : item.unread}
@@ -108,7 +63,7 @@ export default function AdminInbox() {
                           {getDisplayName(user)}
                         </p>
                         <span className="text-xs text-[#949ba4] flex-shrink-0">
-                          {last ? formatMessageTime(last.createdAt) : ""}
+                          {last ? new Date(last.createdAt * 1000).toLocaleDateString() : ""}
                         </span>
                       </div>
                       <p className="text-xs text-[#949ba4] mt-0.5 font-mono">{item.case.caseNumber}</p>
@@ -118,7 +73,7 @@ export default function AdminInbox() {
                         </p>
                       )}
                     </div>
-                    {item.unread > 0 && <Circle className="w-2.5 h-2.5 text-[#00c787] fill-[#00c787] flex-shrink-0" />}
+                    {item.unread > 0 && <Circle className="w-2.5 h-2.5 text-[#5865F2] fill-[#5865F2] flex-shrink-0" />}
                   </button>
                 );
               })}
