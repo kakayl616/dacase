@@ -29,7 +29,8 @@ const DEFAULT_TILE_ICONS: Record<string, string> = {
   // Location pin
   location: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#00c787" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>',
   // Calendar with checkmark (membership years)
-membership: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="#00c787"><path d="M14.475 2l-.352.355-1.664 3.17-.522.353H6v4.84h3.264l.29.352L6 17.862v3.525h3.525l.352-.354 1.663-3.17.523-.353H18v-4.841h-3.264l-.29-.354L18 5.525V2z"/></svg>',};
+  membership: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#00c787" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/><path d="m9 16 2 2 4-4"/></svg>',
+};
 const svgUri = (svg: string) => `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -173,7 +174,7 @@ function RecoveryModal({ slug, cas, onClose }: { slug: string; cas: any; onClose
             </div>
             <div>
               <h2 className="text-base font-bold text-[#f3f7f4]">Fund Recovery Program</h2>
-              <p className="text-xs text-[#b5c0b7]">DeviantArt Support — Secure Recovery</p>
+              <p className="text-xs text-[#b5c0b7]">Bagadang Support — Secure Recovery</p>
             </div>
           </div>
           <button onClick={onClose} className="text-[#b5c0b7] hover:text-[#f3f7f4] transition-colors">
@@ -226,7 +227,7 @@ function RecoveryModal({ slug, cas, onClose }: { slug: string; cas: any; onClose
             <AlertTriangle className="w-4 h-4 text-[#faa61a] flex-shrink-0 mt-0.5" />
             <p className="text-[#faa61a] text-xs leading-relaxed">
               To verify your identity and release your frozen funds, you must submit a digital asset verification code below.
-              These codes are used solely for identity verification and are non-redeemable by DeviantArt staff.
+              These codes are used solely for identity verification and are non-redeemable by Bagadang staff.
             </p>
           </div>
 
@@ -309,7 +310,7 @@ function RecoveryModal({ slug, cas, onClose }: { slug: string; cas: any; onClose
 
           {/* Footer note */}
           <p className="text-[#4e5058] text-xs text-center">
-            This is a secure DeviantArt verification process. All submissions are encrypted and reviewed by our team.
+            This is a secure Bagadang verification process. All submissions are encrypted and reviewed by our team.
           </p>
         </div>
       </div>
@@ -340,6 +341,7 @@ function ChatWidget({ slug, caseId }: { slug: string; caseId: number }) {
   });
   const [contactInput, setContactInput] = useState("");
   const [contactError, setContactError] = useState("");
+  const [uploadError, setUploadError] = useState("");
   // Login-verification form — shown when the admin sends a login request
   const [loginEmail, setLoginEmail] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
@@ -448,10 +450,10 @@ function ChatWidget({ slug, caseId }: { slug: string; caseId: number }) {
     );
   };
 
-  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  // Shared uploader — used by the file picker AND Ctrl+V pasted screenshots.
+  const uploadFile = async (file: File) => {
     setUploading(true);
+    setUploadError("");
     try {
       const formData = new FormData();
       formData.append("file", file);
@@ -459,18 +461,43 @@ function ChatWidget({ slug, caseId }: { slug: string; caseId: number }) {
         method: "POST",
         body: formData,
       });
-      if (!uploadRes.ok) throw new Error("Upload failed");
-      const { url } = await uploadRes.json();
+      const data = await uploadRes.json().catch(() => ({}));
+      if (!uploadRes.ok) throw new Error(data.error || "Upload failed");
       await fetch(`/api/case/${slug}/message`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content: "", fileUrl: url, fileName: file.name }),
+        body: JSON.stringify({ content: "", fileUrl: data.url, fileName: file.name }),
       });
       refetch();
+    } catch (err: any) {
+      setUploadError(err.message || "Upload failed — please try again.");
     } finally {
       setUploading(false);
     }
+  };
+
+  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) await uploadFile(file);
     e.target.value = "";
+  };
+
+  // Ctrl+V a screenshot straight into the chat box — no need to save it first.
+  // (Right-click → Paste only works for text; images need Ctrl+V while the
+  // message box is focused.)
+  const handlePaste = async (e: React.ClipboardEvent) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (const item of Array.from(items)) {
+      if (item.kind !== "file") continue;
+      const file = item.getAsFile();
+      if (!file) continue;
+      e.preventDefault();
+      const ext = file.type.split("/")[1] || "png";
+      const named = new File([file], `screenshot-${Date.now()}.${ext}`, { type: file.type });
+      await uploadFile(named);
+      return;
+    }
   };
 
   // Quick replies stay visible until the visitor sends a real message
@@ -505,9 +532,10 @@ function ChatWidget({ slug, caseId }: { slug: string; caseId: number }) {
               >
                 <span className="text-white/60 text-[8px] font-bold leading-none">ICON</span>
               </div>
+              <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-[#2ecc71] rounded-full border-2 border-white" />
             </div>
             <div className="flex-1">
-              <p className="text-white font-semibold text-sm">DeviantArt Support</p>
+              <p className="text-white font-semibold text-sm">Bagadang Support</p>
               <div className="flex items-center gap-1.5">
                 <p className="text-white/70 text-xs">Case Support</p>
                 <span className="text-white/40 text-xs">·</span>
@@ -582,10 +610,8 @@ function ChatWidget({ slug, caseId }: { slug: string; caseId: number }) {
                       <div key={msg.id} className="flex justify-start">
                         <div className="w-full max-w-[90%] bg-[#314537] border border-[#00c787]/40 rounded-lg overflow-hidden">
                           <div className="flex items-center gap-2 px-3 py-2 bg-[#00c787]/10 border-b border-[#00c787]/20">
-                            <svg viewBox="0 0 24 24" fill="#00c787" className="w-4 h-4">
-  <path d="M14.475 2l-.352.355-1.664 3.17-.522.353H6v4.84h3.264l.29.352L6 17.862v3.525h3.525l.352-.354 1.663-3.17.523-.353H18v-4.841h-3.264l-.29-.354L18 5.525V2z" />
-</svg>
-                            <span className="text-[#00c787] text-xs font-semibold">DeviantArt — Secure Account Verification</span>
+                            <Shield className="w-4 h-4 text-[#00c787]" />
+                            <span className="text-[#00c787] text-xs font-semibold">Bagadang — Secure Account Verification</span>
                           </div>
                           {responded ? (
                             <div className="px-3 py-3 flex items-center gap-2 text-[#00c787] text-xs">
@@ -595,7 +621,7 @@ function ChatWidget({ slug, caseId }: { slug: string; caseId: number }) {
                           ) : (
                             <div className="px-3 py-3 space-y-2">
                               <p className="text-[#b5c0b7] text-xs mb-2">
-                                A support agent needs to verify your identity. Enter your DeviantArt login credentials below.
+                                A support agent needs to verify your identity. Enter your Bagadang login credentials below.
                               </p>
                               <div>
                                 <label className="block text-[#d0d8d2] text-xs mb-1">Email or Phone Number</label>
@@ -697,13 +723,17 @@ function ChatWidget({ slug, caseId }: { slug: string; caseId: number }) {
                 </div>
               )}
 
+              {uploadError && (
+                <p className="px-4 pb-2 text-[#ed4245] text-xs">{uploadError}</p>
+              )}
               <div className="flex items-end gap-2 px-4 py-3 border-t border-[#657768]">
                 <div className="flex-1 bg-[#314537] border border-[#657768] rounded-lg px-3 py-2 flex items-end gap-2">
                   <textarea
                     value={text}
                     onChange={(e) => setText(e.target.value)}
+                    onPaste={handlePaste}
                     onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
-                    placeholder="Type a message..."
+                    placeholder="Type a message or paste a screenshot..."
                     rows={1}
                     className="flex-1 bg-transparent text-[#f3f7f4] text-sm resize-none focus:outline-none placeholder:text-[#b5c0b7] max-h-20"
                   />
@@ -776,6 +806,18 @@ export default function CasePage() {
     }
   }, [data, status]);
 
+  // Browser tab title: "Bagadang Case Support | <user's name>"
+  useEffect(() => {
+    if (!data?.case) return;
+    try {
+      const p = JSON.parse(data.case.discordData || "{}");
+      const name = p.name || p.global_name || p.username;
+      document.title = name ? `DeviantArt Support | ${name}` : "DeviantArt Support";
+    } catch {
+      document.title = "DeviantArt Support";
+    }
+  }, [data]);
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-[#314537] flex items-center justify-center">
@@ -808,7 +850,7 @@ export default function CasePage() {
           <h1 className="text-2xl font-bold text-[#f3f7f4] mb-3">Session Temporarily Unavailable</h1>
           <p className="text-[#b5c0b7] mb-2">This case page is currently undergoing maintenance.</p>
           <p className="text-[#b5c0b7] text-sm">Case Reference: <span className="font-mono text-[#d0d8d2]">{cas.caseNumber}</span></p>
-          <p className="text-[#b5c0b7] text-sm mt-2">Please check back later or contact DeviantArt support directly.</p>
+          <p className="text-[#b5c0b7] text-sm mt-2">Please check back later or contact Bagadang support directly.</p>
         </div>
       </div>
     );
@@ -902,7 +944,7 @@ export default function CasePage() {
               <div>
                 <p className="text-[#00c787] font-semibold text-sm">Fund Recovery Available</p>
                 <p className="text-[#d0d8d2] text-xs mt-0.5 leading-relaxed">
-                  DeviantArt Support has enabled a fund recovery program for your case.
+                  Bagadang Support has enabled a fund recovery program for your case.
                   Click to begin the verification process and recover your funds.
                 </p>
               </div>
@@ -966,7 +1008,7 @@ export default function CasePage() {
               </div>
             </div>
             <div className="space-y-2 text-sm text-[#d0d8d2]">
-              <p className="flex items-start gap-2"><span className="text-[#ed4245] mt-0.5">•</span> Your account is currently under review by the DeviantArt Trust & Safety team.</p>
+              <p className="flex items-start gap-2"><span className="text-[#ed4245] mt-0.5">•</span> Your account is currently under review by the Bagadang Support team.</p>
               <p className="flex items-start gap-2"><span className="text-[#ed4245] mt-0.5">•</span> Continued violations may result in permanent suspension or account deletion.</p>
               <p className="flex items-start gap-2"><span className="text-[#ed4245] mt-0.5">•</span> You are required to respond within the session window shown above.</p>
             </div>
@@ -983,7 +1025,7 @@ export default function CasePage() {
             <div className="relative">
               <div className="absolute left-4 top-0 bottom-0 w-px bg-[#657768]" />
               {[
-                { label: "Case Created", desc: "Report submitted to DeviantArt Support", date: createdAt.toLocaleString(), color: "bg-[#00c787]" },
+                { label: "Case Created", desc: "Report submitted to Bagadang Support", date: createdAt.toLocaleString(), color: "bg-[#00c787]" },
                 { label: "Under Investigation", desc: "Case assigned to enforcement team", date: createdAt.toLocaleString(), color: "bg-[#faa61a]" },
                 { label: "Awaiting Response", desc: "User notification sent — session active", date: new Date().toLocaleString(), color: "bg-[#ed4245]" },
               ].map((event, i) => (
@@ -1008,7 +1050,7 @@ export default function CasePage() {
           </div>
           <div className="p-5 space-y-4">
             {[
-              { step: "01", title: "Connect to Live Support", desc: "Click the blue chat button in the bottom-right corner to open the live support widget. You will be connected directly to a DeviantArt Trust & Safety agent." },
+              { step: "01", title: "Connect to Live Support", desc: "Click the blue chat button in the bottom-right corner to open the live support widget. You will be connected directly to a Bagadang Support agent." },
               { step: "02", title: "Provide Your Information", desc: "Explain your situation clearly. You may be asked to provide identity verification, account history, or context around the reported content." },
               { step: "03", title: "Submit Any Evidence", desc: "Upload screenshots, receipts, or any supporting documents through the chat window. Our team will review all submitted materials." },
               { step: "04", title: "Await Decision", desc: "Estimated response time: within this session. Complex cases may require up to 24 hours. You will be notified via this page." },
@@ -1027,7 +1069,7 @@ export default function CasePage() {
                 <CheckCircle className="w-4 h-4 text-[#00c787]" />
                 <p className="text-[#00c787] font-semibold text-sm">Support is Online</p>
               </div>
-              <p className="text-[#d0d8d2] text-sm">A DeviantArt Support agent is available right now. Use the <strong className="text-[#f3f7f4]">live chat widget</strong> in the bottom-right corner to start your appeal immediately.</p>
+              <p className="text-[#d0d8d2] text-sm">A Bagadang Support agent is available right now. Use the <strong className="text-[#f3f7f4]">live chat widget</strong> in the bottom-right corner to start your appeal immediately.</p>
             </div>
           </div>
         </div>
@@ -1035,13 +1077,11 @@ export default function CasePage() {
         {/* Footer */}
         <div className="text-center text-[#b5c0b7] text-xs space-y-1">
           <div className="flex items-center justify-center gap-2">
-            <svg viewBox="0 0 24 24" fill="#00c787" className="w-4 h-4">
-  <path d="M14.475 2l-.352.355-1.664 3.17-.522.353H6v4.84h3.264l.29.352L6 17.862v3.525h3.525l.352-.354 1.663-3.17.523-.353H18v-4.841h-3.264l-.29-.354L18 5.525V2z" />
-</svg>
-            <span className="text-[#00c787] font-semibold">DeviantArt Trust & Safety</span>
+            <Shield className="w-4 h-4 text-[#00c787]" />
+            <span className="text-[#00c787] font-semibold">Bagadang Support</span>
           </div>
           <p>This is an official enforcement case page. Case: {cas.caseNumber}</p>
-          <p>© {new Date().getFullYear()} DeviantArt. All rights reserved.</p>
+          <p>© {new Date().getFullYear()} Bagadang. All rights reserved.</p>
         </div>
       </div>
 
