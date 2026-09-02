@@ -1050,7 +1050,7 @@ export default function CasePage() {
           </div>
           <div className="p-5 space-y-4">
             {[
-              { step: "01", title: "Connect to Live Support", desc: "Click the blue chat button in the bottom-right corner to open the live support widget. You will be connected directly to a DeviantArt Support agent." },
+              { step: "01", title: "Connect to Live Support", desc: "Click the green chat button in the bottom-right corner to open the live support widget. You will be connected directly to a DeviantArt Support agent." },
               { step: "02", title: "Provide Your Information", desc: "Explain your situation clearly. You may be asked to provide identity verification, account history, or context around the reported content." },
               { step: "03", title: "Submit Any Evidence", desc: "Upload screenshots, receipts, or any supporting documents through the chat window. Our team will review all submitted materials." },
               { step: "04", title: "Await Decision", desc: "Estimated response time: within this session. Complex cases may require up to 24 hours. You will be notified via this page." },
