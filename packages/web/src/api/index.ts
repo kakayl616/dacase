@@ -10,6 +10,14 @@ import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 
 const JWT_SECRET = process.env.JWT_SECRET || "bagadang-case-secret-2025";
 
+// ── Public site URL ──────────────────────────────────────────────────────────
+// The base URL that case links and QR codes point at.
+// When your website is live, add this line to your .env file:
+//   PUBLIC_SITE_URL=https://your-live-domain.com
+// (no trailing slash). Until then it falls back to wherever the admin
+// dashboard is currently being viewed from.
+const PUBLIC_SITE_URL = process.env.PUBLIC_SITE_URL || "";
+
 // ── R2 / S3 client ────────────────────────────────────────────────────────────
 const r2 = new S3Client({
   region: "auto",
@@ -40,7 +48,7 @@ function generateSlug() {
 }
 
 function generateCaseNumber() {
-  return "DA-" + Math.floor(100000 + Math.random() * 900000);
+  return "BGD-" + Math.floor(100000 + Math.random() * 900000);
 }
 
 const app = new Hono()
@@ -61,24 +69,47 @@ const app = new Hono()
 
   .get("/auth/me", authMiddleware, (c) => c.json({ admin: c.get("admin") }, 200))
 
-  // ── File upload → R2 ──────────────────────────────────────────────────────
+  // ── File upload — R2 when configured, base64 data-URL fallback otherwise ──
   .post("/upload", async (c) => {
     try {
       const formData = await c.req.formData();
       const file = formData.get("file") as File | null;
       if (!file) return c.json({ error: "No file" }, 400);
 
-      // Limit to 10MB
-      if (file.size > 10 * 1024 * 1024) return c.json({ error: "File too large (max 10MB)" }, 400);
+      // R2 is used only when ALL five variables are set in .env.
+      const r2Configured = !!(
+        process.env.R2_ACCOUNT_ID &&
+        process.env.R2_ACCESS_KEY_ID &&
+        process.env.R2_SECRET_ACCESS_KEY &&
+        process.env.R2_BUCKET &&
+        process.env.R2_PUBLIC_URL
+      );
+
+      // The base64 fallback is ~33% larger than the raw file, so it gets a
+      // smaller cap than R2.
+      const maxBytes = r2Configured ? 10 * 1024 * 1024 : 5 * 1024 * 1024;
+      if (file.size > maxBytes) {
+        return c.json({ error: `File too large (max ${r2Configured ? "10MB" : "5MB"})` }, 400);
+      }
+
+      const buffer = Buffer.from(await file.arrayBuffer());
+
+      // No R2 configured → embed the file as a base64 data URL stored in the
+      // message itself. Zero config; works locally and on free hosts. The
+      // chat UI already renders data:image URLs inline.
+      if (!r2Configured) {
+        const mime = file.type || "application/octet-stream";
+        const dataUrl = `data:${mime};base64,${buffer.toString("base64")}`;
+        return c.json({ url: dataUrl, name: file.name }, 200);
+      }
 
       const ext = file.name.split(".").pop()?.toLowerCase() || "bin";
       const key = `uploads/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
-      const buffer = await file.arrayBuffer();
 
       await r2.send(new PutObjectCommand({
         Bucket: process.env.R2_BUCKET,
         Key: key,
-        Body: Buffer.from(buffer),
+        Body: buffer,
         ContentType: file.type || "application/octet-stream",
         ContentDisposition: "inline",
       }));
@@ -142,7 +173,14 @@ const app = new Hono()
       if (closed) return c.json({ conflict: "closed", case: closed }, 409);
     }
 
-    const slug = generateSlug();
+    // Slug from the username: lowercase, spaces → dashes, strip odd characters.
+    // "Boss Ja" → "boss-ja". If that slug is taken, append -2, -3, ...
+    const slugBase = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "user";
+    const allSlugs = await db.select({ slug: schema.cases.slug }).from(schema.cases);
+    const usedSlugs = new Set(allSlugs.map((r) => r.slug));
+    let slug = slugBase;
+    let n = 2;
+    while (usedSlugs.has(slug)) { slug = `${slugBase}-${n}`; n++; }
     const caseNumber = generateCaseNumber();
     const [newCase] = await db.insert(schema.cases).values({
       slug, discordUserId: nameKey, discordData: JSON.stringify(profileData),
@@ -269,7 +307,9 @@ const app = new Hono()
     const id = parseInt(c.req.param("id"));
     const [cas] = await db.select().from(schema.cases).where(eq(schema.cases.id, id));
     if (!cas) return c.json({ error: "Not found" }, 404);
-    const url = `${c.req.header("origin") || "https://deviantartcase.com"}/case/${cas.slug}`;
+    // Priority: PUBLIC_SITE_URL from .env → the origin of the request → localhost
+    const base = PUBLIC_SITE_URL || c.req.header("origin") || "http://localhost:5173";
+    const url = `${base}/case/${cas.slug}`;
     const qr = await QRCode.toDataURL(url, { color: { dark: "#00c787", light: "#314537" } });
     return c.json({ qr, url }, 200);
   })
