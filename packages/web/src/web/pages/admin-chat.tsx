@@ -42,6 +42,7 @@ export default function AdminChat() {
   const [text, setText] = useState("");
   const [uploading, setUploading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const scrollBoxRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const token = getToken();
 
@@ -55,8 +56,19 @@ export default function AdminChat() {
 
   const { messages, refetch } = useAdminMessages(parseInt(id), token);
 
+  // Scroll to the newest message ONCE when the conversation first opens.
+  // After that the page never scrolls by itself — scrolling is fully manual.
+  const didInitialScroll = useRef(false);
+
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    didInitialScroll.current = false; // new conversation → allow the one-time scroll again
+  }, [id]);
+
+  useEffect(() => {
+    if (didInitialScroll.current) return;
+    if (!messages || messages.length === 0) return;
+    messagesEndRef.current?.scrollIntoView({ behavior: "instant" as ScrollBehavior });
+    didInitialScroll.current = true;
   }, [messages]);
 
   useEffect(() => {
@@ -158,7 +170,7 @@ export default function AdminChat() {
         </div>
 
         {/* Messages */}
-        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3">
+        <div ref={scrollBoxRef} className="flex-1 overflow-y-auto px-6 py-4 space-y-3">
           {messages.length === 0 && (
             <div className="text-center text-[#949ba4] py-12">
               <MessageIcon className="w-10 h-10 mx-auto mb-3 opacity-30" />
