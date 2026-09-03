@@ -56,20 +56,8 @@ export default function AdminChat() {
 
   const { messages, refetch } = useAdminMessages(parseInt(id), token);
 
-  // Scroll to the newest message ONCE when the conversation first opens.
-  // After that the page never scrolls by itself — scrolling is fully manual.
-  const didInitialScroll = useRef(false);
-
-  useEffect(() => {
-    didInitialScroll.current = false; // new conversation → allow the one-time scroll again
-  }, [id]);
-
-  useEffect(() => {
-    if (didInitialScroll.current) return;
-    if (!messages || messages.length === 0) return;
-    messagesEndRef.current?.scrollIntoView({ behavior: "instant" as ScrollBehavior });
-    didInitialScroll.current = true;
-  }, [messages]);
+  // No auto-scroll anywhere. The page never moves on its own —
+  // scrolling is 100% manual. New messages just appear; you scroll to them.
 
   useEffect(() => {
     fetch(`/api/cases/${id}/messages/read`, { method: "POST", headers: authHeaders() });
