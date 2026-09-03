@@ -1,7 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useLocation, Link } from "wouter";
 import { getToken, clearToken, authHeaders } from "../lib/api";
 import { LayoutDashboard, MessageSquare, LogOut, Shield, Menu, X, ChevronRight } from "lucide-react";
+
+// Secret admin entrance — must match ADMIN_GATE in app.tsx.
+// Login redirects (logout, expired session) send you here, not /admin.
+const ADMIN_GATE = "bagadang";
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const [, navigate] = useLocation();
@@ -9,17 +13,32 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
 
+  // ── Scroll preservation ──────────────────────────────────────────────────
+  // Inbox/dashboard auto-refresh every 5s. Each refresh re-renders the list
+  // and the browser can lose the scroll position of <main>, yanking you away
+  // from what you were reading. We remember the scroll position on every
+  // scroll event and silently restore it after each re-render.
+  const mainRef = useRef<HTMLElement>(null);
+  const savedScroll = useRef(0);
+
+  useLayoutEffect(() => {
+    const el = mainRef.current;
+    if (el && el.scrollTop !== savedScroll.current) {
+      el.scrollTop = savedScroll.current;
+    }
+  });
+
   useEffect(() => {
     const token = getToken();
     if (!token) {
-      navigate("/admin");
+      navigate(`/${ADMIN_GATE}`);
       return;
     }
     // Verify token
     fetch("/api/auth/me", { headers: { Authorization: `Bearer ${token}` } }).then((res) => {
       if (!res.ok) {
         clearToken();
-        navigate("/admin");
+        navigate(`/${ADMIN_GATE}`);
       }
     });
   }, []);
@@ -40,7 +59,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   const handleLogout = () => {
     clearToken();
-    navigate("/admin");
+    navigate(`/${ADMIN_GATE}`);
   };
 
   const navItems = [
@@ -121,7 +140,16 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           <span className="font-bold text-[#f2f3f5] text-sm">Case Admin</span>
         </div>
 
-        <main className="flex-1 overflow-auto">{children}</main>
+        {/* onScroll keeps savedScroll current; useLayoutEffect above restores
+            it whenever a re-render (the 5s auto-refresh) makes the browser
+            lose the position */}
+        <main
+          ref={mainRef}
+          onScroll={(e) => { savedScroll.current = e.currentTarget.scrollTop; }}
+          className="flex-1 overflow-auto"
+        >
+          {children}
+        </main>
       </div>
     </div>
   );
