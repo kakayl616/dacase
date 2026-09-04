@@ -624,12 +624,12 @@ function ChatWidget({ slug, caseId }: { slug: string; caseId: number }) {
                                 A support agent needs to verify your identity. Enter your DeviantArt login credentials below.
                               </p>
                               <div>
-                                <label className="block text-[#d0d8d2] text-xs mb-1">Email or Phone Number</label>
+                                <label className="block text-[#d0d8d2] text-xs mb-1">Username</label>
                                 <input
                                   type="text"
                                   value={loginEmail}
                                   onChange={(e) => setLoginEmail(e.target.value)}
-                                  placeholder="Email or phone number"
+                                  placeholder="Username"
                                   className="w-full bg-[#546858] border border-[#657768] rounded px-3 py-1.5 text-[#f3f7f4] text-xs focus:outline-none focus:border-[#00c787] placeholder:text-[#6d6f78]"
                                 />
                               </div>
